@@ -21,9 +21,13 @@ import sys
 # partition = int(sys.argv[1])
 partition = int(sys.argv[1])
 callback= int(sys.argv[2])
+arrayid= int(sys.argv[3])
 
-wd=0.01*callback
-lr=0.01*callback
+wd_values = np.logspace(np.log10(0.1), np.log10(0.00001), 10)
+lr_values = np.logspace(np.log10(0.1), np.log10(0.00001), 10)
+
+wd=wd_values[partition]
+lr=lr_values[callback]
 
 # Rest of the code
 
@@ -615,4 +619,4 @@ ult_data_frame = pd.concat(big_data_frames, ignore_index=True)
 
 print(ult_data_frame.shape)
 
-ult_data_frame.to_csv(f'output_data/{callback}_{partition}.csv', index=False)
+ult_data_frame.to_csv(f'output_data/{callback}_{partition}_{arrayid}.csv', index=False)
