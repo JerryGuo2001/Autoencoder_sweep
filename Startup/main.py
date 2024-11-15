@@ -488,7 +488,7 @@ def get_hidden_activations(model, n_hidden=3, n_items=12, device='cuda'):
         x = torch.Tensor(test_dat[i,:]).to(device)
         #out = model.forward(x, encoding=False).detach()
         hidden = model.forward(x, encoding=True).detach()
-        hiddenarr[i, :] = hidden.detach().cuda() if torch.cuda.is_available() else hidden.detach().cpu()
+        hiddenarr[i, :] = hidden.cuda().numpy() if torch.cuda.is_available() else hidden.cpu().numpy()
     return hiddenarr
 
 def roll_idx(n):
