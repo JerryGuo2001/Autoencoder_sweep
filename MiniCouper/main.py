@@ -19,12 +19,11 @@ import sys
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
-repet = int(sys.argv[1])
+partition = int(sys.argv[1])
 callback= int(sys.argv[2])
-abc = int(sys.argv[3])
 
-wd=0.01*abc
-lr=0.01*abc
+wd=0.01*callback
+lr=0.01*callback
 
 # Rest of the code
 
@@ -604,8 +603,8 @@ for i in range (10):
                 results['dists'].append(model_dists)
                 results['learn_rate'].append(8.25e-5)
                 results['weight_decay'].append(3.78e-5)
-                results['repetition'].append(repet)
-                results['wd_lr_pair'].append(abc)
+                results['repetition'].append(callback)
+                results['wd_lr_pair'].append(partition)
         print('model_id:',i)
         
     # Save results
@@ -616,4 +615,4 @@ ult_data_frame = pd.concat(big_data_frames, ignore_index=True)
 
 print(ult_data_frame.shape)
 
-ult_data_frame.to_csv(f'output_data/{callback}_{abc}.csv', index=False)
+ult_data_frame.to_csv(f'output_data/{callback}_{partition}.csv', index=False)
