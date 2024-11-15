@@ -573,7 +573,7 @@ def check_the_condition(df_frame,b):
 
 
 batman_df=pd.DataFrame()
-# Iterate over all combinations of lr and wd, excluding the (0.0, 0.0) pair
+
 # Set device and params
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 params = {
@@ -587,7 +587,9 @@ save_results = False
 save_weights = False
 ult_data_frame = pd.DataFrame()
 big_data_frames = []
+print('ready_to_go')
 for i in range (700):
+    print('we_are_started_at'+i)
     n_models = 1
     hidden_layer_widths = [6, 9, 12, 15, 18]
     results = {'name':[], 'path':[], 'task':[], 'L2':[], '1':[], '2':[], '3':[], '4':[],
