@@ -9,11 +9,11 @@
 #SBATCH --cpus-per-task=1     ## number of cores the job needs
 #SBATCH --error=slurm-%J.err  ## error log file
 #SBATCH --output=slurm-%J.out ## output log file
-
 # Run command hostname and save output to the file out.txt
-python3.11 -m venv myenv
-source myenv/bin/activate
+source ~/.bashrc
 
-pip3 install -r requirements.txt
+conda activate myenv
 
 python3 main.py ${1} ${2}
+
+exit
