@@ -589,7 +589,7 @@ ult_data_frame = pd.DataFrame()
 big_data_frames = []
 print('ready_to_go')
 for i in range (700):
-    print('we_are_started_at'+i)
+    print('we_are_started_at'+f'{i}')
     n_models = 1
     hidden_layer_widths = [6, 9, 12, 15, 18]
     results = {'name':[], 'path':[], 'task':[], 'L2':[], '1':[], '2':[], '3':[], '4':[],
