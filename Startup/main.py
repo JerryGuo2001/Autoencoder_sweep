@@ -19,10 +19,10 @@ import sys
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
-abc = int(sys.argv[2])
+abc = int(sys.argv[3])
 
-wd=0.1*abc
-lr=0.1*abc
+wd=0.01*abc
+lr=0.01*abc
 
 # Rest of the code
 

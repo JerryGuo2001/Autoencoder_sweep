@@ -1,0 +1,7 @@
+#!/bin/bash
+for((callback=1; callback<1; callback+=1)); do 
+    a=$(callback) 
+    for((partition=0; partition<70; partition+=1)); do 
+        sbatch file_startup.sub "$partition" "$callback" "$a"; 
+    done; 
+done;
