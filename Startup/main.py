@@ -15,6 +15,7 @@ from sklearn.preprocessing import StandardScaler
 # Now df_frame will have the mean PCA1 and PCA2 for each graph_id
 from sklearn.cluster import KMeans
 import seaborn as sns
+import sys
 
 # Get variables from command-line arguments
 partition = int(sys.argv[1])
