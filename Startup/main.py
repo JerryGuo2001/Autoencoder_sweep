@@ -18,8 +18,9 @@ import seaborn as sns
 import sys
 
 # Get variables from command-line arguments
-partition = int(sys.argv[1])
+# partition = int(sys.argv[1])
 abc = int(sys.argv[2])
+
 wd=0.1*abc
 lr=0.1*abc
 
@@ -396,7 +397,6 @@ class TrainTorch:
 
             if verbose_epochs: print(f'{epoch} {self.loss.data:.4f}')
             loss_store.append(float(f'{self.loss.data:.4f}'))
-        print(f'{epoch} {self.loss.data:.4f}')
         self.training_loss = loss_store
         self.is_trained = True
 
@@ -419,7 +419,6 @@ class TrainTorch:
 
                 if verbose_epochs: print(f'{epoch} {self.loss.data:.4f}')
                 loss_store.append(float(f'{self.loss.data:.4f}'))
-            print(f'{epoch} {self.loss.data:.4f}')
         self.training_loss = loss_store
         self.is_trained = True
 
@@ -568,7 +567,6 @@ def check_the_condition(df_frame,b):
 
     if col3_condition:
         check=1
-        print('true')
     else:
         check=0
     return check
@@ -599,8 +597,6 @@ for i in range (700):
     for dataset_ID in ['I', 'B']:
         for l2_size in hidden_layer_widths:
             for model_i in range(n_models):
-                print(f'Training {dataset_ID} model: {model_i} L2 {l2_size}')
-
                 # build dataset...
                 X, Y = get_graph_dataset(edges, sel=dataset_ID)
                 dat = Data(X, Y, batch_size=8, datatype=dataset_ID, shuffle=False)
