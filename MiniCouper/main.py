@@ -21,6 +21,7 @@ import sys
 # partition = int(sys.argv[1])
 abc = int(sys.argv[3])
 repet = int(sys.argv[1])
+filename= int(sys.argv[2])
 
 wd=0.01*abc
 lr=0.01*abc
@@ -615,5 +616,4 @@ ult_data_frame = pd.concat(big_data_frames, ignore_index=True)
 
 print(ult_data_frame.shape)
 
-filename = abc  # Store the filename in a variable
 ult_data_frame.to_csv(f'output_data/{filename}.csv', index=False)
