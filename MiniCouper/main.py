@@ -19,9 +19,9 @@ import sys
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
-abc = int(sys.argv[3])
-repet = int(sys.argv[1])
-filename= int(sys.argv[2])
+abc = int(sys.argv[2])
+repet = int(sys.argv[0])
+filename= int(sys.argv[1])
 
 wd=0.01*abc
 lr=0.01*abc
