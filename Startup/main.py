@@ -15,8 +15,8 @@ import sys
 
 # Get variables from command-line arguments
 partition = int(sys.argv[1])
-slurm_array_task_id = int(sys.argv[2])
-a = int(sys.argv[3])  # Capture 'a'
+a = int(sys.argv[2])
+
 
 print(f"Variable a: {a}")
 # Rest of the code
