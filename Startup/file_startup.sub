@@ -15,6 +15,6 @@ source ~/.bashrc
 
 conda activate myenv
 
-python3 main.py ${1} ${2} ${3}
+python3 main.py ${1}
 
 exit

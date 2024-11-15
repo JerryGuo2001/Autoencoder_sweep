@@ -19,7 +19,7 @@ import sys
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
-abc = int(sys.argv[3])
+abc = int(sys.argv[1])
 
 wd=0.01*abc
 lr=0.01*abc
@@ -728,5 +728,5 @@ df_frame['MOT'] = Accuracy
 batman_df = pd.concat([batman_df, df_frame], ignore_index=True)
 print(batman_df.shape)
 
-filename = abc  # Store the filename in a variable
+filename = 'testRun'  # Store the filename in a variable
 batman_df.to_csv(f'output_data/{filename}.csv', index=False)
