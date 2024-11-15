@@ -2,7 +2,7 @@
 
 #SBATCH --job-name=test       ## Name of the job.
 #SBATCH -A bornstea_lab      ## CHANGE account to charge
-#SBATCH -p free               ## partition name
+#SBATCH -p free-gpu               ## partition name
 #SBATCH --nodes=1             ## (-N) number of nodes to use
 #SBATCH --ntasks=1            ## (-n) number of tasks to launch
 #SBATCH --array=1        ## number of array tasks
