@@ -19,9 +19,9 @@ import sys
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
-abc = int(sys.argv[2])
-repet = int(sys.argv[0])
-filename= int(sys.argv[1])
+repet = int(sys.argv[1])
+callback= int(sys.argv[2])
+abc = int(sys.argv[3])
 
 wd=0.01*abc
 lr=0.01*abc
@@ -616,4 +616,4 @@ ult_data_frame = pd.concat(big_data_frames, ignore_index=True)
 
 print(ult_data_frame.shape)
 
-ult_data_frame.to_csv(f'output_data/{filename}.csv', index=False)
+ult_data_frame.to_csv(f'output_data/{callback}_{abc}.csv', index=False)
