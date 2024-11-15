@@ -12,11 +12,720 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 import seaborn as sns
 import sys
+from torchsummary import summary
 
 # Get variables from command-line arguments
 partition = int(sys.argv[1])
-a = int(sys.argv[2])
+abc = int(sys.argv[2])
+wd=0.1*abc
+lr=0.1*abc
 
-
-print(f"Variable a: {a}")
 # Rest of the code
+
+## The old task
+# nItems = 12
+# mapping = {0:'pot', 1:'mug', 2:'wheel',3:'compass',4:'dice',5:'pan',6:'chair',7:'hammer',
+#            8:'clipboard',9:'antenna',10:'triangle',11:'bowl'}
+# mappingN = {0:'pot_0', 1:'mug_1', 2:'wheel_2',3:'compass_3',4:'dice_4',5:'pan_5',6:'chair_6',7:'hammer_7',
+#            8:'clipboard_8',9:'antenna_9',10:'triangle_10',11:'bowl_11'}
+
+#                   # 0   1.  2.  3.  4.  5.  6.  7.  8.  9.  10. 11. 
+# Gedges =  np.array([[0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.], # 0
+#                    [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.], # 1
+#                    [1., 0., 0., 1., 0., 1., 0., 0., 0., 0., 0., 0.], # 2
+#                    [0., 1., 1., 0., 1., 0., 0., 0., 0., 0., 0., 0.], # 3
+#                    [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.], # 4
+#                    [0., 0., 1., 0., 0., 0., 1., 1., 0., 0., 0., 0.], # 5
+#                    [0., 0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0.], # 6
+#                    [0., 0., 0., 0., 0., 1., 0., 0., 1., 1., 1., 0.], # 7
+#                    [0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0., 1.], # 8
+#                    [0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 1., 0.], # 9
+#                    [0., 0., 0., 0., 0., 0., 0., 1., 0., 1., 0., 1.], # 10
+#                    [0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 1., 0.]])# 11
+
+## The new task
+nItems = 12
+mapping = {0:'skate', 1:'chair', 2:'globe',3:'basket',4:'shades',5:'boat',6:'oven',7:'tree',
+           8:'mailbox',9:'fan',10:'pawn',11:'couch'}
+
+mappingN = {0:'skate_0', 1:'chair_1', 2:'globe_2',3:'basket_3',4:'shades_4',5:'boat_5',6:'oven_6',7:'tree_7',
+           8:'mailbox_8',9:'fan_9',10:'pawn_10',11:'couch_11'}
+
+
+                  # 0   1.  2.  3.  4.  5.  6.  7.  8.  9.  10. 11. 
+Gedges =  np.array([[0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], # 0
+                   [1., 0., 0., 1., 1., 0., 0., 0., 0., 0., 0., 0.], # 1
+                   [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0.], # 2
+                   [0., 1., 0., 0., 1., 0., 1., 1., 0., 0., 0., 0.], # 3
+                   [0., 1., 1., 1., 0., 1., 0., 0., 0., 0., 0., 0.], # 4
+                   [0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0.], # 5
+                   [0., 0., 0., 1., 0., 0., 0., 0., 1., 1., 0., 0.], # 6
+                   [0., 0., 0., 1., 0., 1., 0., 0., 0., 1., 0., 0.], # 7
+                   [0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 1., 0.], # 8
+                   [0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 1., 1.], # 9
+                   [0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 1.], # 10
+                   [0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 0.]])# 11
+
+
+def plot_graphtask(G, mappingN, Gedges=None, font_size=10):
+	''' '''
+	fig = plt.figure(figsize=(8,3))
+	plt.subplot(1,2,1)
+	nx.draw(G, with_labels=True,  labels=mappingN, node_size=100, 
+			node_color='lightgreen', font_size=font_size, font_color='k')
+
+	if Gedges is not None: 
+		plt.subplot(1,2,2)
+		plt.imshow(Gedges,cmap='binary')
+		plt.title('Edges')
+
+	plt.tight_layout()
+
+def parse_dist_accs(frame, dist_id):
+    Li, Lb = [], []
+    scorei, scoreb = [], []
+    for row_idx, row in frame.iterrows():
+        if row['task'] == 'I':
+            Li.append(row['L2'])
+            scorei.append(row['scores'][dist_id])
+        elif row['task'] == 'B':
+            Lb.append(row['L2'])
+            scoreb.append(row['scores'][dist_id])
+    
+    Li, Lb = np.array(Li), np.array(Lb)
+    scorei, scoreb = np.array(scorei), np.array(scoreb)
+    return Li, Lb, scorei, scoreb
+
+def plot_results(r_frame):
+    dists_l = [1,2,3]
+    plt.figure(figsize=(13,3))
+    for i in dists_l:
+        plt.subplot(1, len(dists_l), i)
+        Li, Lb, scorei, scoreb = parse_dist_accs(r_frame, dist_id=i)
+        # b inter ,, r blocked
+        plt.scatter(Li, scorei, color='teal', alpha=.5)
+        plt.scatter(Lb, scoreb, color='r', alpha=.5)
+
+        #find line of best fit
+        ai, bi = np.polyfit(Li, scorei, 1)
+        ab, bb = np.polyfit(Lb, scoreb, 1)
+        plt.plot(Li, ai*Li+bi, color='teal', linewidth=3, label='Intermixed')
+        plt.plot(Lb, ab*Lb+bb, color='r', linewidth=3, label='Blocked')
+        
+        plt.title(f'DistDiff: {i}', size=20)
+
+        if i == 1:
+            plt.ylabel('Judgement Accuracy', size=18)
+            plt.yticks([0, 25, 50, 75, 100], size=15)
+            plt.legend()
+        else:
+            plt.yticks([])
+            
+
+        plt.xlabel('Layer 2 width', size=18)
+        plt.ylim(0,100)
+        plt.xticks([6, 9, 12, 15, 18], size=15)
+
+def plot_graphtask(G, mappingN, Gedges=None, font_size=10):
+	''' '''
+	fig = plt.figure(figsize=(8,3))
+	plt.subplot(1,2,1)
+	nx.draw(G, with_labels=True,  labels=mappingN, node_size=100, 
+			node_color='lightgreen', font_size=font_size, font_color='k')
+
+	if Gedges is not None: 
+		plt.subplot(1,2,2)
+		plt.imshow(Gedges,cmap='binary')
+		plt.title('Edges')
+
+	plt.tight_layout()
+
+def make_inter_trials(edges, nTrials, UNIFORM=False):
+	""" Create the interleaved training data
+	convert each node to a one hot vector
+	and then for each of the edges, we 
+	sample each node pair from its one-hot repersentation
+	all from a discrete uniform distribution over n trials
+	
+	ex.
+	# nTrials = 176 * 4
+	# X,Y = make_inter_trials(edges, nTrials)
+
+	"""
+	
+	nEdges = len(edges)
+	nItems = len(set(edges.flatten()))
+	if UNIFORM: 
+		edgesSampled = np.random.randint(0, nEdges, nTrials) # random list of edges
+	else:
+		nReps = nTrials / nEdges # TODO check for unevenness
+		l_rep = np.repeat(range(nEdges), nReps)
+		edgesSampled = np.random.permutation(l_rep)
+		
+	trialEdges = edges[edgesSampled] # the repeated edges for each trial (nTrials x 2)
+
+	oneHot = np.eye(nItems)         # one hot template matrix
+	X,Y = oneHot[trialEdges[:,0]], oneHot[trialEdges[:,1]]
+	
+	return X,Y
+
+
+def search_block_lists(edges, nLists, list_len, niter=500000): 
+	"""
+	Generates blocked edge lists.
+		Randomly generate block lists,
+		check if any of the nodes are duplicated,
+		if they are, repeat, else, end search.
+
+	ex.
+	# nLists = 4
+	# list_len = 4
+
+	# blocks = search_block_lists(edges, nLists, list_len)
+	# print(blocks) # the edge index for each block
+	"""
+	nEdges = len(edges)
+	fCount = 1000
+	for it in range(niter):
+		blocks = np.random.choice(range(nEdges), nEdges, replace=False).reshape(list_len,nLists)
+
+		dupCount = 0
+		for blockList in range(nLists):
+			# Check that all items are unique
+			u, c = np.unique(edges[blocks[:,blockList]], return_counts=True)
+			dupCount += len(u[c > 1])
+			
+		if dupCount == 0:
+			fCount = dupCount
+			if 0: print(it) # print number of iterations to find valid blocking
+			break
+		else:
+			dupCount = 0  
+	# Make sure that we are returning a valid search, else, nothing
+	if fCount == 0:
+		return blocks 
+	else:
+		return None
+	
+
+# Tests
+def test_blocks(edges, blocks, list_len):
+	""" """
+	assert (len(np.unique(edges[blocks[:,0]])) == list_len*2)
+	assert (len(np.unique(edges[blocks[:,1]])) == list_len*2)
+	assert (len(np.unique(edges[blocks[:,2]])) == list_len*2)
+	assert (len(np.unique(edges[blocks[:,3]])) == list_len*2)
+
+
+
+
+def make_block_trials(edges, nTrials, blocks, nItems, nLists, UNIFORM=False):
+	"""
+	ex.
+
+	# nTrials = 176
+	# nLists = 4
+	# list_len = 4
+
+	# blocks = search_block_lists(edges, nLists, list_len)
+	# test_blocks(edges, blocks, list_len)
+	# X_b, Y_b = make_block_trials(edges, nTrials, blocks, nItems, nLists)
+	# # np.sum(X_b[0,:,:], axis=0), np.sum(Y_b[0,:,:], axis=0)
+
+	"""
+	X_b, Y_b = np.empty((nLists, nTrials, nItems)),np.empty((nLists, nTrials, nItems))
+	oneHot = np.eye(nItems)
+
+	for block_list in range(nLists):
+		
+		if UNIFORM: # Choose edges from uniform distribution
+			block_edges_sampled = np.random.choice(blocks[:,block_list], nTrials)
+		else: # present shuffled list of perfect numbering
+			nReps = nTrials / len(blocks[:,block_list]) # TODO check for unevenness
+			bl_rep = np.repeat(blocks[:,block_list], nReps)
+			block_edges_sampled = np.random.permutation(bl_rep)
+		
+		trial_block_edges = edges[block_edges_sampled] # the block list edges
+		X,Y = oneHot[trial_block_edges[:,0]], oneHot[trial_block_edges[:,1]]
+		X_b[block_list,:,:] = X
+		Y_b[block_list,:,:] = Y
+		
+	return X_b, Y_b
+
+
+
+# Task func #
+
+def relative_distance(n_items, model_dists, path_lens, ndistTrials=1000, verbose=False):
+    """ 
+    model_dists: distance matrix for all model hidden items
+    path_lens: matrix with path lengths between items
+    """
+    choice_accs = []
+    
+    # Use a dictionary with keys from 0 to 4 for valid distances only
+    choice_accs_dist = {i: [] for i in range(5)}  # Valid distances: 0 to 4
+
+    for tr in range(ndistTrials):
+        # Draw 3 random items, without replacement; i2 is reference
+        ri = np.random.choice(range(n_items), size=(1, 3), replace=False)
+        i1, i2, i3 = ri[:, 0][0], ri[:, 1][0], ri[:, 2][0]
+
+        if verbose: print(i1, i2, i3)
+
+        # Calculate path lengths and their absolute difference
+        d12 = path_lens[i1, i2]
+        d32 = path_lens[i3, i2]
+        dist_diff = int(np.abs(d32 - d12))  # Ensure the difference is an integer
+
+        # Skip if the distance difference exceeds 4
+        if dist_diff > 4:
+            if verbose: print(f"Skipping trial {tr} due to large distance difference: {dist_diff}")
+            continue
+
+        if verbose: print(tr, 'PL', d12, d32, dist_diff)
+
+        # Determine the correct choice based on shortest path length
+        correct_choice = int(np.argmin([d12, d32]))
+
+        # Retrieve model distances (similarities) between the items
+        m12 = model_dists[i1, i2]
+        m32 = model_dists[i3, i2]
+
+        if verbose: print(tr, 'MD', m12, m32)
+
+        # Determine the model's choice based on maximum similarity
+        model_choice = int(np.argmax([m12, m32]))
+
+        # Assess the correctness of the model's decision
+        choice_acc = int((correct_choice == model_choice))
+        if verbose: print(tr, 'CCMCCA', correct_choice, model_choice, choice_acc)
+
+        # Record accuracy in the appropriate distance bucket
+        choice_accs.append(choice_acc)
+        choice_accs_dist[dist_diff].append(choice_acc)
+
+    # Print final accuracy if verbose mode is enabled
+    if verbose: print('Final ACC', (np.sum(choice_accs) / len(choice_accs)) * 100)
+
+    return choice_accs_dist
+
+
+class Data:
+    def __init__(self, X, Y, batch_size=1, datatype=None, shuffle=False, verbose=False):
+        
+        self.batch_size = batch_size #16 # 2, 4, 
+        self.shuffle = shuffle
+        self.datatype = datatype
+
+        self.dataloader = None
+        self.dataloaders = []
+
+        if datatype == 'I':
+            self.nblocks = None
+            self.data_nsamples = X.shape[0]
+            self.data_shape = X.shape[1]
+            if verbose: print(f'Data Shape: {self.data_shape} | Batch size {self.batch_size}')
+            self.build_dataloader(X, Y)
+        elif datatype == 'B':
+            self.nblocks = X.shape[0]
+            self.data_nsamples = X.shape[1]
+            self.data_shape = X.shape[2]
+            if verbose: print(f'Data Shape: {self.data_shape} | Batch size {self.batch_size}')
+            self.build_blocked_dataloaders(X, Y)
+        else:
+            raise ValueError('Use either "B" or "I" for datatype')
+
+    def build_dataloader(self, X, Y, out=False): 
+        ''' '''
+        X, Y = np.float32(X), np.float32(Y)
+        #X = TensorDataset(torch.from_numpy(X))
+        dataset = TensorDataset( torch.Tensor(X), torch.Tensor(Y) )
+        self.dataloader = DataLoader(dataset, batch_size=self.batch_size, 
+                                    shuffle=self.shuffle, drop_last=True)
+        
+        if out:
+            return self.dataloader
+
+    def build_blocked_dataloaders(self, X, Y):
+        dataloaders = []
+        for block in range(X.shape[0]):
+            #print(block)
+            Xb, Yb = X[block,:,:], Y[block,:,:]
+            #print(Xb.shape)
+
+            dataloader = self.build_dataloader(Xb, Yb, out=True)
+            self.dataloaders.append(dataloader)
+
+class TrainTorch:
+
+    def __init__(self, model, params):
+        self.model = model
+        self.num_epochs = params['num_epochs']
+        self.learning_rate = params['learning_rate']
+        self.weight_decay = params['weight_decay']
+        self.device = params['device']
+        
+        self.criterion = nn.MSELoss()
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), 
+            lr=self.learning_rate, 
+            weight_decay=self.weight_decay #1e-5 #1e-5
+        )
+        self.is_trained = False
+
+    def train(self, dataloader, verbose_epochs=False, verbose_final=True): 
+        ''' '''
+        
+        loss_store = []
+        for epoch in range(self.num_epochs):
+            for _, data in enumerate(dataloader):
+                X, Y = data
+                X, Y = X.to(self.device), Y.to(self.device)
+
+                # forward
+                output = self.model(X)
+                self.loss = self.criterion(output, Y)
+                # backward
+                self.optimizer.zero_grad()
+                self.loss.backward()
+                self.optimizer.step()
+
+            if verbose_epochs: print(f'{epoch} {self.loss.data:.4f}')
+            loss_store.append(float(f'{self.loss.data:.4f}'))
+        print(f'{epoch} {self.loss.data:.4f}')
+        self.training_loss = loss_store
+        self.is_trained = True
+
+    def train_blocked(self, dataloaders, verbose_blocks=False, verbose_epochs=False, verbose_final=True):
+        loss_store = []
+        for loaderindex, dataloader in enumerate(dataloaders):
+            if verbose_blocks: print(loaderindex)
+            for epoch in range(self.num_epochs):
+                for _, data in enumerate(dataloader):
+                    X, Y = data
+                    X, Y = X.to(self.device), Y.to(self.device)
+
+                    # forward
+                    output = self.model(X)
+                    self.loss = self.criterion(output, Y)
+                    # backward
+                    self.optimizer.zero_grad()
+                    self.loss.backward()
+                    self.optimizer.step()
+
+                if verbose_epochs: print(f'{epoch} {self.loss.data:.4f}')
+                loss_store.append(float(f'{self.loss.data:.4f}'))
+            print(f'{epoch} {self.loss.data:.4f}')
+        self.training_loss = loss_store
+        self.is_trained = True
+
+def get_graph_dataset(edges, sel=''):
+    # TODO: set all of these to passable param dict
+    if sel == 'I':
+        # Interleaved trials
+        nTrials = 176 * 4
+        X, Y = make_inter_trials(edges, nTrials)
+        return X,Y
+    elif sel == 'B':
+        # Blocked trials
+        nTrialsb = 176
+        nLists = 4
+        list_len = len(edges) // nLists 
+        blocks = search_block_lists(edges, nLists, list_len)
+        try:
+            test_blocks(edges, blocks, list_len)
+        except TypeError as e:
+            print('Type error, retrying...')
+            blocks = search_block_lists(edges, nLists, list_len)
+            test_blocks(edges, blocks, list_len)
+        Xb, Yb = make_block_trials(edges, nTrialsb, blocks, nItems, nLists)
+        return Xb, Yb
+    else:
+        raise ValueError('Choose either sel="B" or "I"')
+
+class AE(nn.Module):
+	
+	def __init__(self, input_shape=100, L1=10, L2=5, n_hidden=3, 
+				name='', weight_path=''):
+		super(AE, self).__init__()
+		self.L1 = L1
+		self.L2 = L2
+
+		self.encoder = nn.Sequential(
+			nn.Linear(input_shape, self.L1),
+			nn.ReLU(True),
+			nn.Linear(self.L1, self.L2),
+			nn.ReLU(True), 
+			nn.Linear(self.L2, n_hidden)
+			)
+
+		self.decoder = nn.Sequential(
+			nn.Linear(n_hidden, self.L2),
+			nn.ReLU(True),
+			nn.Linear(self.L2, self.L1),
+			nn.ReLU(True), 
+			nn.Linear(self.L1, input_shape), 
+			nn.Tanh()
+			)
+
+	def forward(self, x, encoding=False):
+		encoded = self.encoder(x)
+		decoded = self.decoder(encoded)
+		if encoding: # Return hidden later activations
+			return encoded
+		return decoded
+
+def get_hidden_activations(model, n_hidden=3, n_items=12, device='cuda'):
+    ''' Assumes one hot'''
+    test_dat = np.eye(n_items)
+    #outarr = np.zeros((n_items, n_items))
+    hiddenarr = np.zeros((n_items, n_hidden))
+    for i in range(n_items):
+        x = torch.Tensor(test_dat[i,:]).to(device)
+        #out = model.forward(x, encoding=False).detach()
+        hidden = model.forward(x, encoding=True).detach()
+        hiddenarr[i,:] = hidden.cpu()
+    return hiddenarr
+
+def roll_idx(n):
+    '''Create index that moves the first matrix row to the last'''
+    idx = list(range(n))[1:n]
+    idx.append(0)
+    return idx 
+
+def add_one(features=4, samples=5):
+    # Check sample equation?
+    XX = np.eye(features)
+    XY = XX[:, roll_idx(features)]
+
+    XX = np.tile(XX, (samples)).T
+    XY = np.tile(XY, (samples)).T
+    return XX, XY
+
+def calc_dist(a, b):
+    '''
+    Requires:
+    from scipy.spatial.distance import cdist'''
+    return 1 - cdist(a, b, metric='cosine')
+
+def H2I(H):
+	""" Convert one-hot back to int """
+	return np.where(H)[0][0]
+
+### THE GRAPH TASK 
+big_data_frames = []
+adj_matrix = Gedges
+G = nx.from_numpy_array(Gedges)
+edges = np.array(list(G.edges)) 
+if 0: plot_graphtask(G, mappingN, Gedges, font_size=10) # TODO: I don't think there's a show call
+
+def accuracy_col(df_frame,id):
+    graph_id_9=df_frame[df_frame['graph_id'] == id]
+    # Separate the data into Inter (I) and Block (B)
+    inter_df = graph_id_9[graph_id_9['task'] == 'I']
+    block_df = graph_id_9[graph_id_9['task'] == 'B']
+
+    # Calculate accuracy differences for each distance
+    accuracy_diff_1 = {}
+    accuracy_diff_2 = {}
+    accuracy_diff_3 = {}
+
+    # List of distances to calculate differences for
+    distances = [6, 9, 12, 15, 18]
+
+    for dist in distances:
+        inter_acc = inter_df[inter_df['L2'] == dist]['1'].values[0]
+        block_acc = block_df[block_df['L2'] == dist]['1'].values[0]
+        accuracy_diff_1[dist] = inter_acc - block_acc
+
+    for dist in distances:
+        inter_acc = inter_df[inter_df['L2'] == dist]['2'].values[0]
+        block_acc = block_df[block_df['L2'] == dist]['2'].values[0]
+        accuracy_diff_2[dist] = inter_acc - block_acc
+
+    for dist in distances:
+        inter_acc = inter_df[inter_df['L2'] == dist]['3'].values[0]
+        block_acc = block_df[block_df['L2'] == dist]['3'].values[0]
+        accuracy_diff_3[dist] = inter_acc - block_acc
+    accuracy=pd.DataFrame({'1':accuracy_diff_1,'2':accuracy_diff_2,'3':accuracy_diff_3})
+    return accuracy
+
+def check_the_condition(df_frame,b):
+    df=accuracy_col(df_frame,b)
+
+    # Column 1: Check if the absolute value is smaller than 10
+    # col1_condition = (df['1'].abs() < 15).all()
+
+    # Column 2: Check conditions for rows 6/9 and 15/18
+    # col2_condition = ((df['2'].iloc[0] > 0))
+
+    # Column 3: Check conditions for rows 6 and 18
+    col3_condition = (df['3'].iloc[0] < 0) and (df['3'].iloc[1] < 0) and (df['3'].iloc[4] > 0) 
+
+    if col3_condition:
+        check=1
+        print('true')
+    else:
+        check=0
+    return check
+
+
+batman_df=pd.DataFrame()
+# Iterate over all combinations of lr and wd, excluding the (0.0, 0.0) pair
+# Set device and params
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+params = {
+    'num_epochs': 10,
+    'learning_rate': lr,
+    'weight_decay': wd, 
+    'device': device
+}
+data_dir = '/Users/jianleguo/Desktop/VAE/original_model/AE_Result' # os.path.join()
+save_results = False
+save_weights = False
+ult_data_frame = pd.DataFrame()
+big_data_frames = []
+for i in range (700):
+    n_models = 1
+    hidden_layer_widths = [6, 9, 12, 15, 18]
+    results = {'name':[], 'path':[], 'task':[], 'L2':[], '1':[], '2':[], '3':[], '4':[],
+                'scores':[], 'end_loss':[], 'hidden':[], 'dists':[],'graph_id':[],'learn_rate':[],'weight_decay':[],'cond_set':[]}
+
+    # Sweet jesus this tripple for loop makes me sad
+    for dataset_ID in ['I', 'B']:
+        for l2_size in hidden_layer_widths:
+            for model_i in range(n_models):
+                print(f'Training {dataset_ID} model: {model_i} L2 {l2_size}')
+
+                # build dataset...
+                X, Y = get_graph_dataset(edges, sel=dataset_ID)
+                dat = Data(X, Y, batch_size=8, datatype=dataset_ID, shuffle=False)
+
+                # Set model metadata and create model and trainer
+                model_name = f'{dataset_ID}_{l2_size}_{model_i}'
+                weight_path = f'{data_dir}/torchweights/{model_name}.pt' # os.path.join()
+                model = AE(input_shape=dat.data_shape, L1=12, L2=l2_size, n_hidden=3, 
+                            name=f'{model_name}', weight_path=weight_path).to(device)
+                if 0: summary(model, input_size=(1,20))
+                net = TrainTorch(model, params)
+
+                # Train model 
+                if dat.datatype == 'I': net.train(dat.dataloader)
+                elif dat.datatype == 'B': net.train_blocked(dat.dataloaders)
+                else:
+                    raise ValueError(f'datatype trainer is {dat.datatype}')
+
+                # save model weights
+                if save_weights: torch.save(net.model.state_dict(), weight_path)
+                
+                # Compute hidden activations and task distances
+                hiddenarr = get_hidden_activations(net.model, n_hidden=3, 
+                                                    n_items=12, device=device)
+                model_dists = calc_dist(hiddenarr, hiddenarr)
+                path_lens = nx.floyd_warshall_numpy(G)
+                trialIter = 500
+
+                # Compute choice task results
+                choice_accs_dist = relative_distance(12, model_dists, path_lens, 
+                                                        ndistTrials=trialIter, verbose=False)
+                dist_pct = {} # TODO: Wrap into function
+                for dist, vals in choice_accs_dist.items():
+                    acc = (np.sum(vals) / len(vals)) * 100
+                    dist_pct[dist] = acc
+                    if 0: print(f'{dist}: {acc:.2f}% {len(vals)}')
+
+                # Pack up into dictionary 
+                # TODO: this should be an interable
+                results['name'].append(model_name)
+                results['path'].append(weight_path)
+                results['task'].append(dataset_ID)
+                results['L2'].append(l2_size)
+                results['1'].append(dist_pct[1])
+                results['2'].append(dist_pct[2])
+                results['3'].append(dist_pct[3])
+                results['4'].append(dist_pct[4])
+                results['scores'].append(dist_pct)
+                results['end_loss'].append(net.training_loss[-1])
+                results['hidden'].append(hiddenarr)
+                results['dists'].append(model_dists)
+                results['graph_id'].append(i)
+                results['learn_rate'].append(8.25e-5)
+                results['weight_decay'].append(3.78e-5)
+                results['cond_set'].append(abc)
+        print('model_id:',i)
+        
+    # Save results
+    r_frame = pd.DataFrame(results)
+    big_data_frames.append(r_frame)
+
+ult_data_frame = pd.concat(big_data_frames, ignore_index=True)
+
+# Assuming you have the following setup
+df_frame = ult_data_frame
+df_frame['flattened_hidden'] = df_frame['hidden'].apply(lambda x: x.reshape(-1))
+
+# Flattened data into a DataFrame
+flattened_data = pd.DataFrame(df_frame['flattened_hidden'].tolist())
+
+# Now, group by 'graph_id' and reshape the data accordingly
+
+# We will first group by `graph_id` and then reshape each group
+reshaped_data = []
+graph_ids=[]
+
+for graph_id, group in df_frame.groupby('graph_id'):
+    # Flattened hidden data for the current graph_id
+    group_flattened = group['flattened_hidden'].values
+    
+    # Reshape it for the current group (1000, 10 models, 12*3 each)
+    # In this case, you will have (10 models, 12*3) -> reshape to (10, 12, 3)
+    reshaped_group = np.array([x.reshape(12, 3) for x in group_flattened])
+    
+    # Append the reshaped group to the list
+    reshaped_data.append(reshaped_group)
+    graph_ids.append(graph_id)
+
+# Convert reshaped_data into a NumPy array (or Pandas DataFrame)
+reshaped_data_array = np.array(reshaped_data)
+final_array=reshaped_data_array.reshape(700,-1)
+
+
+# Perform PCA on flattened data
+pca = PCA(n_components=2)  # Adjust as needed
+# Apply StandardScaler to scale the data
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(final_array)
+pca_result = pca.fit_transform(X_scaled)
+
+# Add PCA results back to the DataFrame along with `graph_id`
+df_frame_forgrouped = pd.DataFrame({
+    'graph_id': graph_ids,
+    'groupPCA1': pca_result[:, 0],
+    'groupPCA2': pca_result[:, 1]
+})
+
+# Merge the mean PCA values back into the original DataFrame
+df_frame = df_frame.merge(df_frame_forgrouped, on='graph_id', how='left')
+
+# Assuming df_frame already has the PCA1 and PCA2 columns
+
+# Choose the number of clusters (e.g., 5 clusters)
+n_clusters = 4
+kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+df_frame['Cluster'] = kmeans.fit_predict(df_frame[['groupPCA1', 'groupPCA2']])
+
+# Iterate through the 'graph_id' column
+graph_special_id=[]
+for graph_id in df_frame['graph_id'].unique():
+    check=check_the_condition(df_frame,graph_id)
+    if check:
+        graph_special_id.append(graph_id)
+Accuracy=len(graph_special_id)/len(graph_ids)
+df_frame['MOT'] = Accuracy
+# Append df_frame to batman_df
+batman_df = pd.concat([batman_df, df_frame], ignore_index=True)
+print(batman_df.shape)
+
+filename = abc  # Store the filename in a variable
+batman_df.to_csv(f'output_data/{filename}.csv', index=False)

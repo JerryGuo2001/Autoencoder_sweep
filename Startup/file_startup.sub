@@ -5,7 +5,7 @@
 #SBATCH -p free               ## partition name
 #SBATCH --nodes=1             ## (-N) number of nodes to use
 #SBATCH --ntasks=1            ## (-n) number of tasks to launch
-#SBATCH --array=1          ## number of array tasks
+#SBATCH --array=1        ## number of array tasks
 #SBATCH --cpus-per-task=1     ## number of cores the job needs
 #SBATCH --error=slurm-%J.err  ## error log file
 #SBATCH --output=slurm-%J.out ## output log file
