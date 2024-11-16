@@ -23,7 +23,7 @@ partition = int(sys.argv[1])
 callback= int(sys.argv[2])
 arrayid= int(sys.argv[3])
 
-wd_values = np.logspace(np.log10(0.1), np.log10(0.00001), 10)
+wd_values = np.logspace(np.log10(1e-1), np.log10(1.67e-3), 10)
 lr_values = np.logspace(np.log10(0.1), np.log10(0.00001), 10)
 
 wd=wd_values[partition]
@@ -605,8 +605,8 @@ for i in range (10):
                 results['end_loss'].append(net.training_loss[-1])
                 results['hidden'].append(hiddenarr)
                 results['dists'].append(model_dists)
-                results['learn_rate'].append(8.25e-5)
-                results['weight_decay'].append(3.78e-5)
+                results['learn_rate'].append(lr)
+                results['weight_decay'].append(wd)
                 results['repetition'].append(callback)
                 results['wd_lr_pair'].append(partition)
         print('model_id:',i)
