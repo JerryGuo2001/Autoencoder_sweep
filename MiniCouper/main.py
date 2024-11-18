@@ -23,8 +23,8 @@ partition = int(sys.argv[1])
 callback= int(sys.argv[2])
 arrayid= int(sys.argv[3])
 
-wd_values = np.logspace(np.log10(1e-1), np.log10(1.67e-3), 10)
-lr_values = np.logspace(np.log10(0.1), np.log10(0.00001), 10)
+wd_values = np.logspace(np.log10(1.62e-2), np.log10(1.67e-3), 10)
+lr_values = np.logspace(np.log10(1.0e-1), np.log10(2.78e-5), 10)
 
 wd=wd_values[partition]
 lr=lr_values[callback]
