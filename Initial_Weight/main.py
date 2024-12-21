@@ -651,7 +651,6 @@ for i in range (10):
                 results['repetition'].append(partition)
                 results['initial_weight_type'].append(iw)
         print('model_id:',i)
-        
     # Save results
     r_frame = pd.DataFrame(results)
     big_data_frames.append(r_frame)
