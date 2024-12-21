@@ -16,6 +16,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 import seaborn as sns
 import sys
+import torch.nn.init as init
+from itertools import combinations
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
@@ -23,11 +25,20 @@ partition = int(sys.argv[1])
 callback= int(sys.argv[2])
 arrayid= int(sys.argv[3])
 
-wd_values = np.logspace(np.log10(1.62e-2), np.log10(1.67e-3), 10)
-lr_values = np.logspace(np.log10(1.0e-1), np.log10(2.78e-5), 10)
+# wd_values = np.logspace(np.log10(1.62e-2), np.log10(1.67e-3), 10)
+# lr_values = np.logspace(np.log10(1.0e-1), np.log10(2.78e-5), 10)
+iw=''
+if partition==1:
+    iw='xavier'
+elif partition ==2:
+    iw='he'
+elif partition ==3:
+    iw='lecun'
+elif partition ==4:
+    iw='orthogonal'
 
 wd=1.62e-2
-lr=4.62e-4
+lr=2.78e-4
 
 # Rest of the code
 
@@ -265,7 +276,7 @@ def make_block_trials(edges, nTrials, blocks, nItems, nLists, UNIFORM=False):
 
 # Task func #
 
-def relative_distance(n_items, model_dists, path_lens, ndistTrials=1000, verbose=False):
+def relative_distance(n_items, model_dists, path_lens, verbose=False):
     """ 
     model_dists: distance matrix for all model hidden items
     path_lens: matrix with path lengths between items
@@ -275,10 +286,11 @@ def relative_distance(n_items, model_dists, path_lens, ndistTrials=1000, verbose
     # Use a dictionary with keys from 0 to 4 for valid distances only
     choice_accs_dist = {i: [] for i in range(5)}  # Valid distances: 0 to 4
 
-    for tr in range(ndistTrials):
-        # Draw 3 random items, without replacement; i2 is reference
-        ri = np.random.choice(range(n_items), size=(1, 3), replace=False)
-        i1, i2, i3 = ri[:, 0][0], ri[:, 1][0], ri[:, 2][0]
+    # Generate all possible triplets of items (i1, i2, i3)
+    all_triplets = combinations(range(n_items), 3)  # Generate all unique triplets (i1, i2, i3)
+
+    for triplet in all_triplets:
+        i1, i2, i3 = triplet
 
         if verbose: print(i1, i2, i3)
 
@@ -289,10 +301,10 @@ def relative_distance(n_items, model_dists, path_lens, ndistTrials=1000, verbose
 
         # Skip if the distance difference exceeds 4
         if dist_diff > 4:
-            if verbose: print(f"Skipping trial {tr} due to large distance difference: {dist_diff}")
+            if verbose: print(f"Skipping trial due to large distance difference: {dist_diff}")
             continue
 
-        if verbose: print(tr, 'PL', d12, d32, dist_diff)
+        if verbose: print('PL', d12, d32, dist_diff)
 
         # Determine the correct choice based on shortest path length
         correct_choice = int(np.argmin([d12, d32]))
@@ -301,14 +313,14 @@ def relative_distance(n_items, model_dists, path_lens, ndistTrials=1000, verbose
         m12 = model_dists[i1, i2]
         m32 = model_dists[i3, i2]
 
-        if verbose: print(tr, 'MD', m12, m32)
+        if verbose: print('MD', m12, m32)
 
         # Determine the model's choice based on maximum similarity
         model_choice = int(np.argmax([m12, m32]))
 
         # Assess the correctness of the model's decision
         choice_acc = int((correct_choice == model_choice))
-        if verbose: print(tr, 'CCMCCA', correct_choice, model_choice, choice_acc)
+        if verbose: print('CCMCCA', correct_choice, model_choice, choice_acc)
 
         # Record accuracy in the appropriate distance bucket
         choice_accs.append(choice_acc)
@@ -450,7 +462,6 @@ def get_graph_dataset(edges, sel=''):
         return Xb, Yb
     else:
         raise ValueError('Choose either sel="B" or "I"')
-
 class AE(nn.Module):
 	
 	def __init__(self, input_shape=100, L1=10, L2=5, n_hidden=3, 
@@ -475,6 +486,35 @@ class AE(nn.Module):
 			nn.Linear(self.L1, input_shape), 
 			nn.Tanh()
 			)
+		
+	def initialize_weights(self, method='xavier'):
+		for layer in self.encoder:
+			if isinstance(layer, nn.Linear):
+				if method == 'xavier':
+					init.xavier_uniform_(layer.weight)  # Xavier Initialization
+				elif method == 'he':
+					init.kaiming_uniform_(layer.weight, nonlinearity='relu')  # He Initialization
+				elif method == 'lecun':
+					init.normal_(layer.weight, mean=0, std=(1 / layer.weight.size(1)) ** 0.5)  # LeCun Initialization
+				elif method == 'orthogonal':
+					init.orthogonal_(layer.weight)  # Orthogonal Initialization
+				else:
+					raise ValueError(f"Unknown initialization method: {method}")
+				init.zeros_(layer.bias)  # Initialize biases to 0
+
+		for layer in self.decoder:
+			if isinstance(layer, nn.Linear):
+				if method == 'xavier':
+					init.xavier_uniform_(layer.weight)  # Xavier Initialization
+				elif method == 'he':
+					init.kaiming_uniform_(layer.weight, nonlinearity='relu')  # He Initialization
+				elif method == 'lecun':
+					init.normal_(layer.weight, mean=0, std=(1 / layer.weight.size(1)) ** 0.5)  # LeCun Initialization
+				elif method == 'orthogonal':
+					init.orthogonal_(layer.weight)  # Orthogonal Initialization
+				else:
+					raise ValueError(f"Unknown initialization method: {method}")
+				init.zeros_(layer.bias)  # Initialize biases to 0
 
 	def forward(self, x, encoding=False):
 		encoded = self.encoder(x)
@@ -563,6 +603,8 @@ for i in range (10):
                 weight_path = f'{data_dir}/torchweights/{model_name}.pt' # os.path.join()
                 model = AE(input_shape=dat.data_shape, L1=12, L2=l2_size, n_hidden=3, 
                             name=f'{model_name}', weight_path=weight_path).to(device)
+                            #initialized weight method set up here
+                model.initialize_weights(method=iw) 
                 if 0: summary(model, input_size=(1,20))
                 net = TrainTorch(model, params)
 
@@ -583,8 +625,7 @@ for i in range (10):
                 trialIter = 500
 
                 # Compute choice task results
-                choice_accs_dist = relative_distance(12, model_dists, path_lens, 
-                                                        ndistTrials=trialIter, verbose=False)
+                choice_accs_dist = relative_distance(12, model_dists, path_lens, verbose=False)
                 dist_pct = {} # TODO: Wrap into function
                 for dist, vals in choice_accs_dist.items():
                     acc = (np.sum(vals) / len(vals)) * 100
@@ -607,8 +648,8 @@ for i in range (10):
                 results['dists'].append(model_dists)
                 results['learn_rate'].append(lr)
                 results['weight_decay'].append(wd)
-                results['repetition'].append(callback)
-                results['wd_lr_pair'].append(partition)
+                results['repetition'].append(partition)
+                results['initial_weight_type'].append(iw)
         print('model_id:',i)
         
     # Save results
