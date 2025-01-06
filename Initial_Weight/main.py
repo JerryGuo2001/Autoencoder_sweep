@@ -17,7 +17,7 @@ from sklearn.cluster import KMeans
 import seaborn as sns
 import sys
 import torch.nn.init as init
-from itertools import combinations
+from itertools import permutations
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
@@ -287,12 +287,21 @@ def relative_distance(n_items, model_dists, path_lens, verbose=False):
     choice_accs_dist = {i: [] for i in range(5)}  # Valid distances: 0 to 4
 
     # Generate all possible triplets of items (i1, i2, i3)
-    all_triplets = combinations(range(n_items), 3)  # Generate all unique triplets (i1, i2, i3)
+    all_triplets = list(permutations(range(n_items), 3))  # Generate all unique triplets (i1, i2, i3)
 
     for triplet in all_triplets:
         i1, i2, i3 = triplet
-
+		
         if verbose: print(i1, i2, i3)
+
+		# Check if the triplet is directly connected
+        if (
+            path_lens[i1, i2] <= 1 or 
+            path_lens[i2, i3] <= 1 or 
+            path_lens[i1, i3] <= 1
+        ):
+            if verbose: print(f"Skipping triplet {triplet} because it's directly connected.")
+            continue
 
         # Calculate path lengths and their absolute difference
         d12 = path_lens[i1, i2]
@@ -588,7 +597,7 @@ for i in range (20):
     n_models = 7
     hidden_layer_widths = [6, 9, 12, 15, 18]
     results = {'name':[], 'path':[], 'task':[], 'L2':[], '1':[], '2':[], '3':[], '4':[],
-                'scores':[], 'end_loss':[], 'hidden':[], 'dists':[],'learn_rate':[],'weight_decay':[],'repetition':[],'wd_lr_pair':[]}
+                'scores':[], 'end_loss':[], 'hidden':[], 'dists':[],'learn_rate':[],'weight_decay':[],'repetition':[],'initial_weight_type':[]}
 
     # Sweet jesus this tripple for loop makes me sad
     for dataset_ID in ['I', 'B']:
