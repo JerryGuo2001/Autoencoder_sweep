@@ -592,7 +592,7 @@ save_weights = False
 ult_data_frame = pd.DataFrame()
 big_data_frames = []
 print('ready_to_go')
-for i in range (20):
+for i in range (10):
     print('we_are_started_at'+f'{i}')
     n_models = 7
     hidden_layer_widths = [6, 9, 12, 15, 18]
