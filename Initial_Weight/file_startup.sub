@@ -5,7 +5,7 @@
 #SBATCH -p free-gpu           ## partition name
 #SBATCH --nodes=1             ## (-N) number of nodes to use
 #SBATCH --ntasks=1            ## (-n) number of tasks to launch
-#SBATCH --array=0-1           ## number of array tasks
+#SBATCH --array=0-3           ## number of array tasks
 #SBATCH --cpus-per-task=1     ## number of cores the job needs
 #SBATCH --tmp=5G                 # requesting 50 GB (1 GB = 1,024 MB) local scratch
 #SBATCH --error=slurm-%J.err  ## error log file
