@@ -29,9 +29,9 @@ arrayid= int(sys.argv[3])
 # lr_values = np.logspace(np.log10(1.0e-1), np.log10(2.78e-5), 10)
 iw=''
 if partition==1:
-    iw='xavier'
-elif partition ==2:
     iw='he'
+elif partition ==2:
+    iw='xavier'
 elif partition ==3:
     iw='lecun'
 elif partition ==4:
@@ -597,7 +597,7 @@ for i in range (10):
     n_models = 7
     hidden_layer_widths = [6, 9, 12, 15, 18]
     results = {'name':[], 'path':[], 'task':[], 'L2':[], '1':[], '2':[], '3':[], '4':[],
-                'scores':[], 'end_loss':[], 'hidden':[], 'dists':[],'learn_rate':[],'weight_decay':[],'repetition':[],'initial_weight_type':[]}
+                'scores':[], 'end_loss':[], 'hidden':[], 'dists':[],'learn_rate':[],'weight_decay':[],'repetition':[],'initial_weight_type':[],'initial_weights':[]}
 
     # Sweet jesus this tripple for loop makes me sad
     for dataset_ID in ['I', 'B']:
@@ -613,7 +613,8 @@ for i in range (10):
                 model = AE(input_shape=dat.data_shape, L1=12, L2=l2_size, n_hidden=3, 
                             name=f'{model_name}', weight_path=weight_path).to(device)
                             #initialized weight method set up here
-                model.initialize_weights(method=iw) 
+                model.initialize_weights(method='he') 
+                initial_weights = {k: v.clone().cpu().numpy() for k, v in model.state_dict().items()}  # Clone weights to avoid overwriting later
                 if 0: summary(model, input_size=(1,20))
                 net = TrainTorch(model, params)
 
@@ -659,6 +660,7 @@ for i in range (10):
                 results['weight_decay'].append(wd)
                 results['repetition'].append(partition)
                 results['initial_weight_type'].append(iw)
+                results['initial_weights'].append(initial_weights) 
         print('model_id:',i)
     # Save results
     r_frame = pd.DataFrame(results)
