@@ -591,7 +591,7 @@ for i in range (10):
         weights_with_groups = pickle.load(f)
 
     # Extract weights for a specific group number (e.g., group 1)
-    group_number_to_extract = random.randint(1, 823)
+    group_number_to_extract = 1
     extracted_weights = [weight for weight, group_num in weights_with_groups if group_num == group_number_to_extract]
 
     # Now, `extracted_weights` contains the initial weights that belong to group 1
