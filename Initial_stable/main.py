@@ -22,7 +22,30 @@ import random
 import pickle
 import torch
 
+# Load the processed weights with group numbers from the file
+with open('processed_initial_weights_with_groups.pkl', 'rb') as f:
+    weights_with_groups = pickle.load(f)
 
+# Extract weights for a specific group number (e.g., group 1)
+group_number_to_extract = 1
+extracted_weights = [weight for weight, group_num in weights_with_groups if group_num == group_number_to_extract]
+
+# Now, `extracted_weights` contains the initial weights that belong to group 1
+model_names = [
+    'I_6_0', 'I_6_1', 'I_6_2', 'I_6_3', 'I_6_4', 'I_6_5', 'I_6_6',
+    'I_9_0', 'I_9_1', 'I_9_2', 'I_9_3', 'I_9_4', 'I_9_5', 'I_9_6',
+    'I_12_0', 'I_12_1', 'I_12_2', 'I_12_3', 'I_12_4', 'I_12_5', 'I_12_6',
+    'I_15_0', 'I_15_1', 'I_15_2', 'I_15_3', 'I_15_4', 'I_15_5', 'I_15_6',
+    'I_18_0', 'I_18_1', 'I_18_2', 'I_18_3', 'I_18_4', 'I_18_5', 'I_18_6',
+    'B_6_0', 'B_6_1', 'B_6_2', 'B_6_3', 'B_6_4', 'B_6_5', 'B_6_6',
+    'B_9_0', 'B_9_1', 'B_9_2', 'B_9_3', 'B_9_4', 'B_9_5', 'B_9_6',
+    'B_12_0', 'B_12_1', 'B_12_2', 'B_12_3', 'B_12_4', 'B_12_5', 'B_12_6',
+    'B_15_0', 'B_15_1', 'B_15_2', 'B_15_3', 'B_15_4', 'B_15_5', 'B_15_6',
+    'B_18_0', 'B_18_1', 'B_18_2', 'B_18_3', 'B_18_4', 'B_18_5', 'B_18_6'
+]
+
+# Assuming extracted_weights contains the weights as a list
+weights_with_model_names = dict(zip(model_names, extracted_weights))
 
 # Get variables from command-line arguments
 # partition = int(sys.argv[1])
@@ -586,30 +609,6 @@ ult_data_frame = pd.DataFrame()
 big_data_frames = []
 print('ready_to_go')
 for i in range (10):
-    # Load the processed weights with group numbers from the file
-    with open('processed_initial_weights_with_groups.pkl', 'rb') as f:
-        weights_with_groups = pickle.load(f)
-
-    # Extract weights for a specific group number (e.g., group 1)
-    group_number_to_extract = 1
-    extracted_weights = [weight for weight, group_num in weights_with_groups if group_num == group_number_to_extract]
-
-    # Now, `extracted_weights` contains the initial weights that belong to group 1
-    model_names = [
-        'I_6_0', 'I_6_1', 'I_6_2', 'I_6_3', 'I_6_4', 'I_6_5', 'I_6_6',
-        'I_9_0', 'I_9_1', 'I_9_2', 'I_9_3', 'I_9_4', 'I_9_5', 'I_9_6',
-        'I_12_0', 'I_12_1', 'I_12_2', 'I_12_3', 'I_12_4', 'I_12_5', 'I_12_6',
-        'I_15_0', 'I_15_1', 'I_15_2', 'I_15_3', 'I_15_4', 'I_15_5', 'I_15_6',
-        'I_18_0', 'I_18_1', 'I_18_2', 'I_18_3', 'I_18_4', 'I_18_5', 'I_18_6',
-        'B_6_0', 'B_6_1', 'B_6_2', 'B_6_3', 'B_6_4', 'B_6_5', 'B_6_6',
-        'B_9_0', 'B_9_1', 'B_9_2', 'B_9_3', 'B_9_4', 'B_9_5', 'B_9_6',
-        'B_12_0', 'B_12_1', 'B_12_2', 'B_12_3', 'B_12_4', 'B_12_5', 'B_12_6',
-        'B_15_0', 'B_15_1', 'B_15_2', 'B_15_3', 'B_15_4', 'B_15_5', 'B_15_6',
-        'B_18_0', 'B_18_1', 'B_18_2', 'B_18_3', 'B_18_4', 'B_18_5', 'B_18_6'
-    ]
-
-    # Assuming extracted_weights contains the weights as a list
-    weights_with_model_names = dict(zip(model_names, extracted_weights))
     print('we_are_started_at'+f'{i}')
     n_models = 7
     hidden_layer_widths = [6, 9, 12, 15, 18]
