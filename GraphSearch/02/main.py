@@ -74,16 +74,16 @@ mappingN = {0:'skate_0', 1:'chair_1', 2:'globe_2',3:'basket_3',4:'shades_4',5:'b
 
                   # 0   1.  2.  3.  4.  5.  6.  7.  8.  9.  10. 11. 
 Gedges =  np.array([
-    [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+    [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 
     [1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0], 
     [0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0], 
     [0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0], 
     [0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0], 
     [0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0], 
-    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], 
+    [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], 
     [0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0], 
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0], 
-    [0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0], 
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], 
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0], 
     [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1], 
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], 
 ])
@@ -236,43 +236,36 @@ def test_blocks(edges, blocks, list_len):
 	assert (len(np.unique(edges[blocks[:,0]])) == list_len*2)
 	assert (len(np.unique(edges[blocks[:,1]])) == list_len*2)
 	assert (len(np.unique(edges[blocks[:,2]])) == list_len*2)
-	assert (len(np.unique(edges[blocks[:,3]])) == list_len*2)
+
 
 
 
 
 def make_block_trials(edges, nTrials, blocks, nItems, nLists, UNIFORM=False):
-	"""
-	ex.
+    X_b, Y_b = np.empty((nLists, nTrials, nItems)), np.empty((nLists, nTrials, nItems))
+    oneHot = np.eye(nItems)
 
-	# nTrials = 176
-	# nLists = 4
-	# list_len = 4
+    for block_list in range(nLists):
+        if UNIFORM:  # Choose edges from uniform distribution
+            block_edges_sampled = np.random.choice(blocks[:, block_list], nTrials)
+        else:  # Present shuffled list of perfect numbering
+            block_len = len(blocks[:, block_list])
+            nReps = nTrials // block_len  # Ensure integer division
+            remainder = nTrials % block_len
 
-	# blocks = search_block_lists(edges, nLists, list_len)
-	# test_blocks(edges, blocks, list_len)
-	# X_b, Y_b = make_block_trials(edges, nTrials, blocks, nItems, nLists)
-	# # np.sum(X_b[0,:,:], axis=0), np.sum(Y_b[0,:,:], axis=0)
+            bl_rep = np.repeat(blocks[:, block_list], nReps)
+            if remainder > 0:  # Handle unevenness by adding extra samples
+                extra_samples = np.random.choice(blocks[:, block_list], remainder, replace=False)
+                bl_rep = np.concatenate((bl_rep, extra_samples))
 
-	"""
-	X_b, Y_b = np.empty((nLists, nTrials, nItems)),np.empty((nLists, nTrials, nItems))
-	oneHot = np.eye(nItems)
+            block_edges_sampled = np.random.permutation(bl_rep)
 
-	for block_list in range(nLists):
-		
-		if UNIFORM: # Choose edges from uniform distribution
-			block_edges_sampled = np.random.choice(blocks[:,block_list], nTrials)
-		else: # present shuffled list of perfect numbering
-			nReps = nTrials / len(blocks[:,block_list]) # TODO check for unevenness
-			bl_rep = np.repeat(blocks[:,block_list], nReps)
-			block_edges_sampled = np.random.permutation(bl_rep)
-		
-		trial_block_edges = edges[block_edges_sampled] # the block list edges
-		X,Y = oneHot[trial_block_edges[:,0]], oneHot[trial_block_edges[:,1]]
-		X_b[block_list,:,:] = X
-		Y_b[block_list,:,:] = Y
-		
-	return X_b, Y_b
+        trial_block_edges = edges[block_edges_sampled]  # the block list edges
+        X, Y = oneHot[trial_block_edges[:, 0]], oneHot[trial_block_edges[:, 1]]
+        X_b[block_list, :, :] = X
+        Y_b[block_list, :, :] = Y
+
+    return X_b, Y_b
 
 
 
@@ -460,8 +453,8 @@ def get_graph_dataset(edges, sel=''):
     elif sel == 'B':
         # Blocked trials
         nTrialsb = 176
-        nLists = 4
-        list_len = len(edges) // nLists 
+        nLists = 3
+        list_len = 5
         blocks = search_block_lists(edges, nLists, list_len)
         try:
             test_blocks(edges, blocks, list_len)
