@@ -64,7 +64,7 @@ lr=2.78e-4
 #                    [0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 1., 0.]])# 11
 
 ## The new task
-nItems = 12
+nItems = 13
 mapping = {0:'skate', 1:'chair', 2:'globe',3:'basket',4:'shades',5:'boat',6:'oven',7:'tree',
            8:'mailbox',9:'fan',10:'pawn',11:'couch'}
 
@@ -463,7 +463,7 @@ def get_graph_dataset(edges, sel=''):
         # Blocked trials
         nTrialsb = 176
         nLists = 4
-        list_len = len(edges) // nLists 
+        list_len = 4
         blocks = search_block_lists(edges, nLists, list_len)
         try:
             test_blocks(edges, blocks, list_len)
@@ -536,7 +536,7 @@ class AE(nn.Module):
 			return encoded
 		return decoded
 
-def get_hidden_activations(model, n_hidden=3, n_items=12, device='cuda'):
+def get_hidden_activations(model, n_hidden=3, n_items=13, device='cuda'):
     ''' Assumes one hot'''
     test_dat = np.eye(n_items)
     #outarr = np.zeros((n_items, n_items))
@@ -631,13 +631,13 @@ for dataset_ID in ['I', 'B']:
             
             # Compute hidden activations and task distances
             hiddenarr = get_hidden_activations(net.model, n_hidden=3, 
-                                                n_items=12, device=device)
+                                                n_items=13, device=device)
             model_dists = calc_dist(hiddenarr, hiddenarr)
             path_lens = nx.floyd_warshall_numpy(G)
             trialIter = 500
 
             # Compute choice task results
-            choice_accs_dist = relative_distance(12, model_dists, path_lens, verbose=False)
+            choice_accs_dist = relative_distance(13, model_dists, path_lens, verbose=False)
             dist_pct = {} # TODO: Wrap into function
             for dist, vals in choice_accs_dist.items():
                 acc = (np.sum(vals) / len(vals)) * 100
