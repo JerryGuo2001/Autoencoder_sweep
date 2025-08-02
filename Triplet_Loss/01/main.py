@@ -844,7 +844,7 @@ ult_data_frame = pd.DataFrame()
 big_data_frames = []
 print('ready_to_go')
 n_models = 20
-hidden_layer_widths = [6,12,18,24,30,36,42,48,54,60,72,78,84,90,96,102,108,114,120,126,132,138,144]
+hidden_layer_widths = [6,12,18,24,30,36,42,48,54,60,66,68,72,78,84,90,96,102,108,114,120,126,132,138,144]
 results = {'name':[], 'path':[], 'task':[], 'L2':[], '1':[], '2':[], '3':[], '4':[],
             'scores':[], 'end_loss':[], 'hidden':[], 'dists':[],'learn_rate':[],'weight_decay':[],'repetition':[],'initial_weight_type':[],'initial_weights':[]}
 
