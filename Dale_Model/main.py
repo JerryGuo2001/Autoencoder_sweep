@@ -19,6 +19,7 @@ import itertools
 from scipy.stats import ranksums
 import json
 import pandas as pd
+import networkx as nx
 from datetime import datetime
 from itertools import combinations
 from torchsummary import summary  # TODO: This should be a param / file write
@@ -32,13 +33,13 @@ from learner import AE, get_hidden_activations
 from utils import calc_dist
 
 
-if torch.backends.mps.is_available():
-    mps_device = torch.device("mps")
-    x = torch.ones(1, device=mps_device)
-    print (x)
-    device = torch.device("mps")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using CUDA device:", torch.cuda.get_device_name(device))
 else:
-    print ("MPS device not found.")
+    device = torch.device("cpu")
+    print("Using CPU")
+
 
 ### THE GRAPH TASK
 G = nx.from_numpy_array(Gedges)
