@@ -40,6 +40,7 @@ else:
     device = torch.device("cpu")
     print("Using CPU")
 
+model_dir = './trained_models_graphwalk6'  # Replace with the directory where your models are saved
 
 ### THE GRAPH TASK
 G = nx.from_numpy_array(Gedges)
@@ -235,8 +236,10 @@ print(sequences['intermixed'][:20])
 print("\nFirst 20 trials of blocked sequence:")
 print(sequences['blocked'][:20])
 
-with open('graphwalk_sequences.pkl', 'wb') as f:
+# Store in the same directory as your trained models
+with open(os.path.join(model_dir, "graphwalk_sequences.pkl"), "wb") as f:
     pickle.dump(sequences, f)
+
 
 ##### visualize sequences
 
@@ -774,8 +777,6 @@ def train_stimulus_prediction_network(sequence_data, seed, hidden_size1, bottlen
     return model
 
 
-model_dir = './trained_models_graphwalk6'  # Replace with the directory where your models are saved
-
 # Train the network multiple times for each scheduler and memory capacities
 def train_and_save_multiple_models(num_models=1):
     # Elastic beta sweep values
@@ -1006,7 +1007,7 @@ def evaluate_relative_distance(trials, model_dists, trained_model_instance, pret
 
 
 # Iterate over each model file (assuming models are named 'model_*_weights.pth')
-model_dir = './trained_models_graphwalk'  # Replace with the directory where your models are saved
+model_dir = './trained_models_graphwalk6'  # Replace with the directory where your models are saved
 model_files = [f for f in os.listdir(model_dir) if f.endswith('_weights.pth')]
 with open(os.path.join(model_dir,"graphwalk_sequences.pkl"), 'rb') as file:
     sequences = pickle.load(file)
