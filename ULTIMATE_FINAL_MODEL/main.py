@@ -303,14 +303,14 @@ if __name__ == "__main__":
     L2_grid = [6, 12, 36, 72, 108, 144, 180, 216, 252, 288, 324]
 
     df = run(
-        Gedges, L2_grid, n_models=50, regime="B",
+        Gedges, L2_grid, n_models=50, regime="I",
         seed=base_seed, L1=12, n_hidden=3, p_drop=0.05, lr=2.5e-4, wd=1.62e-2,
         n_epochs=20, batch_size=1, init='he'  # assumes `iw` is defined earlier
     )
 
     # save to output_data/<callback>_<partition>_<arrayid>.csv
     os.makedirs("output_data", exist_ok=True)
-    out_path = os.path.join("output_data", f"{callback}_{partition}.csv")
+    out_path = os.path.join("output_data", f"Inter_{callback}_{partition}.csv")
     df.to_csv(out_path, index=False)
     print(f"Saved: {out_path}")
 
