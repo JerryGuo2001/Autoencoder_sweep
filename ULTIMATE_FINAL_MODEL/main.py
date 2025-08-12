@@ -198,7 +198,7 @@ def run(adj, L2_grid, n_models=10, regime="I", seed=123,
 
     blocks = None
     if regime == "B":
-        blocks = find_blocks_once(adj, nlists=4, tries=10000, seed=seed, cache_dir="./blocked_cache")
+        blocks = find_blocks_once(adj, nlists=4, tries=10000, seed=seed)
 
     records = []
     for L2 in L2_grid:
