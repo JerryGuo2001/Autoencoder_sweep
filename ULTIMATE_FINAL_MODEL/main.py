@@ -303,9 +303,9 @@ if __name__ == "__main__":
     L2_grid = [6, 12, 36, 72, 108, 144, 180, 216, 252, 288, 324]
 
     df = run(
-        Gedges, L2_grid, n_models=10, regime="B",
+        Gedges, L2_grid, n_models=50, regime="B",
         seed=base_seed, L1=12, n_hidden=3, p_drop=0.05, lr=2.5e-4, wd=1.62e-2,
-        n_epochs=10, batch_size=1, init='he'  # assumes `iw` is defined earlier
+        n_epochs=20, batch_size=1, init='he'  # assumes `iw` is defined earlier
     )
 
     # save to output_data/<callback>_<partition>_<arrayid>.csv
