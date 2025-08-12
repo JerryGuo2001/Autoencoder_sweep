@@ -27,7 +27,6 @@ def cosine_sim(a,b): return 1 - cdist(a,b,metric="cosine")
 def shortest_paths(adj): return np.asarray(nx.floyd_warshall_numpy(nx.from_numpy_array(adj)), dtype=float)
 def edges_from_adj(adj): return np.array(list(nx.from_numpy_array(adj).edges()),dtype=int)
 
-
 # ------------------ data ------------------
 def make_direct_pairs(edges, n_reps):
     """Repeat each edge n_reps times and shuffle (direct pairs only)."""
@@ -48,37 +47,25 @@ class PairDataset(Dataset):
 
 # ------------------ blocked partition (cached) ------------------
 def _edges_hash(adj: np.ndarray, nlists: int, seed: int) -> str:
-    import hashlib as _hashlib
-    h = _hashlib.md5()
+    h = hashlib.md5()
     h.update(adj.astype(np.uint8).tobytes())
     h.update(str(nlists).encode())
     h.update(str(seed).encode())
     return h.hexdigest()[:16]
 
-def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 10000, seed: int = 123,
-                     cache_dir: str = "./blocked_cache") -> List[np.ndarray]:
+def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 10000, seed: int = 123) -> List[np.ndarray]:
     """
     Partition edges into <= nlists blocks; each block is a matching (no node repeats).
     Returns a list of 1D numpy arrays of edge indices (variable lengths).
-    Caches to disk so later runs reuse the same partition.
+    Pure in-memory: no disk cache, no external files.
     """
-    os.makedirs(cache_dir, exist_ok=True)
     G = nx.from_numpy_array(adj)
     edges = np.array(list(G.edges()), dtype=int)
     nE = len(edges)
-
-    key = _edges_hash(adj, nlists, seed)
-    cache_path = os.path.join(cache_dir, f"blocks_{key}.npy")
-
-    # Reuse if exists
-    if os.path.exists(cache_path):
-        blocks_idx = np.load(cache_path, allow_pickle=True)
-        return [np.array(b, dtype=int) for b in blocks_idx]
-
     rng = np.random.default_rng(seed)
 
     def try_one():
-        # Greedy edge-coloring with exactly nlists colors
+        # Greedy edge-coloring with exactly nlists colors (first-fit)
         used_nodes = [set() for _ in range(nlists)]
         blocks = [[] for _ in range(nlists)]
 
@@ -87,10 +74,10 @@ def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 10000, seed:
         for ei in order:
             u, v = edges[ei]
             placed = False
-            for c in range(nlists):  # first-fit
+            for c in range(nlists):
                 if (u not in used_nodes[c]) and (v not in used_nodes[c]):
                     blocks[c].append(ei)
-                    used_nodes[c].update([u, v])
+                    used_nodes[c].update((u, v))
                     placed = True
                     break
             if not placed:
@@ -100,26 +87,23 @@ def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 10000, seed:
     for _ in range(tries):
         out = try_one()
         if out is not None:
-            np.save(cache_path, np.array(out, dtype=object), allow_pickle=True)
             return out
 
     raise RuntimeError("Could not find a block partition. Try increasing 'nlists' or 'tries'.")
 
+
 # ------------------ model ------------------
 class AEStyleCE(nn.Module):
-    """
-    Encoder: one-hot -> L1 -> L2 -> latent (n_hidden)
-    Classifier: cosine head (normalized weights & features) with learnable scale s.
-    """
-    def __init__(self, n_items, L1=12, L2=36, n_hidden=3, p_drop=0.05, init="he", scale_init=10.0):
+    def __init__(self, n_items, L1=12, L2=36, n_hidden=12, p_drop=0.05,
+                 init="he", scale_init=30.0, margin=0.20):
         super().__init__()
         self.E1 = nn.Linear(n_items, L1)
         self.E2 = nn.Linear(L1, L2)
         self.E3 = nn.Linear(L2, n_hidden)
         self.dropout = nn.Dropout(p_drop)
-        # cosine classifier weights
         self.W = nn.Parameter(torch.randn(n_hidden, n_items) * 0.02)
         self.log_scale = nn.Parameter(torch.log(torch.tensor(scale_init, dtype=torch.float32)))
+        self.margin = margin
         self._init(init)
 
     def _init(self, how):
@@ -136,56 +120,48 @@ class AEStyleCE(nn.Module):
     def encode(self, x):
         x = F.relu(self.E1(x))
         x = self.dropout(F.relu(self.E2(x)))
-        h = self.E3(x)                 # latent code (linear output)
+        h = self.E3(x)
         return h
 
-    def forward(self, x):
-        h = self.encode(x)             # (B, d)
-        # cosine classifier
-        h_norm = F.normalize(h, dim=1)                         # (B, d)
-        W_norm = F.normalize(self.W, dim=0)                    # (d, C)
-        logits = torch.matmul(h_norm, W_norm) * self.log_scale.exp()  # (B, C)
-        return logits, h
+    def forward(self, x, y=None):
+        h = self.encode(x)
+        h_norm = F.normalize(h, dim=1)
+        W_norm = F.normalize(self.W, dim=0)
+        cos = torch.matmul(h_norm, W_norm)               # (B, C)
+        s = self.log_scale.exp()
+        if y is None:
+            return cos * s, h
+        logits = cos.clone()
+        logits[torch.arange(logits.size(0), device=logits.device), y] -= self.margin
+        return logits * s, h
+
 
 # ------------------ training ------------------
-def train_next_item(model, loader, n_epochs=120, lr=2.5e-4, wd=1.5e-2, patience=14, dev=None, label_smoothing=0.05):
-    """
-    Online-style training: default batch_size=1, no shuffle in DataLoader.
-    Uses label smoothing, ReduceLROnPlateau, and gradient clipping (norm=1.0).
-    """
+def train_next_item(model, loader, n_epochs=120, lr=2.5e-4, wd=5e-3, patience=18, dev=None, label_smoothing=0.0):
     dev = dev or device()
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        opt, mode='min', factor=0.5, patience=4, verbose=False, min_lr=1e-5
-    )
-    try:
-        ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
-    except TypeError:
-        ce = nn.CrossEntropyLoss()
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=5, min_lr=1e-5)
+    ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing) if label_smoothing>0 else nn.CrossEntropyLoss()
 
     best, wait, best_state = math.inf, 0, None
-    for ep in range(n_epochs):
-        model.train()
-        losses = []
+    for _ in range(n_epochs):
+        model.train(); losses = []
         for X, y in loader:
             X, y = X.to(dev), y.to(dev)
-            logits, _ = model(X)
+            logits, _ = model(X, y=y)          # <-- pass y
             loss = ce(logits, y)
-            opt.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            opt.step()
-            losses.append(loss.item())
-        m = float(np.mean(losses))
-        scheduler.step(m)
+            opt.zero_grad(); loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step(); losses.append(loss.item())
+        m = float(np.mean(losses)); sched.step(m)
         if m < best - 1e-6:
-            best, wait = m, 0
-            best_state = {k: v.detach().cpu().clone() for k,v in model.state_dict().items()}
+            best, wait, best_state = m, 0, {k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
         else:
             wait += 1
             if wait >= patience:
                 model.load_state_dict(best_state); break
     return best
+
 
 # ------------------ evaluation ------------------
 def hidden_activations(model, n_items, dev):
@@ -213,7 +189,7 @@ def relative_distance_accuracy(n_items, sims, D):
 # ------------------ experiment ------------------
 def run(adj, L2_grid, n_models=10, regime="I", seed=123,
         L1=12, n_hidden=3, p_drop=0.05, lr=2.5e-4, wd=1.62e-2,
-        n_epochs=120, batch_size=1, init="he"):  # unchanged defaults; added init param
+        n_epochs=120, batch_size=1):  # <-- batch_size defaults to 1
     set_seed(seed)
     dev = device()
     n_items = adj.shape[0]
@@ -261,9 +237,8 @@ def run(adj, L2_grid, n_models=10, regime="I", seed=123,
             # Online-style: batch_size=1, keep order (shuffle=False), and keep all items (drop_last=False)
             loader = DataLoader(ds, batch_size=batch_size, shuffle=False, drop_last=False)
 
-            # Pass init from caller
-            model = AEStyleCE(n_items, L1=L1, L2=L2, n_hidden=n_hidden, p_drop=p_drop, init=init).to(dev)
-            best_loss = train_next_item(model, loader, n_epochs=n_epochs, lr=lr, wd=wd, patience=14, dev=dev, label_smoothing=0.05)
+            model = AEStyleCE(n_items, L1=L1, L2=L2, n_hidden=n_hidden, p_drop=p_drop, init="he").to(dev)
+            best_loss = train_next_item(model, loader, n_epochs=n_epochs, lr=lr, wd=wd, patience=14, dev=dev, label_smoothing=0.0)
 
             H = hidden_activations(model, n_items, dev)
             # cosine similarity of normalized codes for judgment
@@ -281,10 +256,7 @@ def run(adj, L2_grid, n_models=10, regime="I", seed=123,
 
 # ------------------ run on your graph ------------------
 if __name__ == "__main__":
-    # fresh random seed each run
-    base_seed = int.from_bytes(os.urandom(8), "big") & 0x7FFFFFFF
-    set_seed(base_seed)
-
+    set_seed(123)
     Gedges = np.array([
         [0,1,0,0,0,0,0,0,0,0,0,0],
         [1,0,1,1,0,0,0,0,0,0,0,0],
@@ -301,18 +273,15 @@ if __name__ == "__main__":
     ], dtype=np.int32)
 
     L2_grid = [6, 12, 36, 72, 108, 144, 180, 216, 252, 288, 324]
-
     df = run(
         Gedges, L2_grid, n_models=50, regime="B",
-        seed=base_seed, L1=12, n_hidden=3, p_drop=0.05, lr=2.5e-4, wd=1.62e-2,
-        n_epochs=20, batch_size=1, init='he'  # assumes `iw` is defined earlier
+        seed=125, L1=12, n_hidden=12, p_drop=0.02,
+        lr=2.5e-4, wd=5e-3, n_epochs=100, batch_size=1
     )
+    print(df.groupby(["regime","L2"])[["acc_d1","acc_d2","acc_d3","acc_d4","best_loss"]].mean().round(1))
 
     # save to output_data/<callback>_<partition>_<arrayid>.csv
     os.makedirs("output_data", exist_ok=True)
     out_path = os.path.join("output_data", f"Block_{callback}_{partition}.csv")
     df.to_csv(out_path, index=False)
     print(f"Saved: {out_path}")
-
-    # (optional) quick summary to stdout
-    print(df.groupby(["regime","L2"])[["acc_d1","acc_d2","acc_d3","acc_d4","best_loss"]].mean().round(1))
