@@ -95,43 +95,44 @@ def make_sequence_equalized(adj: np.ndarray, regime: str, seed: int,
 
     if regime == "B":
         blocks = find_blocks_once(adj, nlists=nlists, seed=seed)
-        # split total exposures per undirected edge across blocks and directions
-        if split:
-            per_dir = exposures_per_edge // 2
-            rem = exposures_per_edge % 2
-        else:
-            per_dir = exposures_per_edge
-            rem = 0
-
         Xs, Ys = [], []
-        for bi, block in enumerate(blocks):
-            # exposures for this block
-            per_block = per_dir // len(blocks)
-            # give the remainder to early blocks
-            reps_this_block = per_block + (1 if bi < (per_dir % len(blocks)) else 0)
-            if reps_this_block == 0 or len(block) == 0:
+
+        # exposures per edge for each direction
+        if split:  # bidirectional
+            reps_fwd = exposures_per_edge // 2 + (exposures_per_edge % 2)  # forward gets the +1 if odd
+            reps_bwd = exposures_per_edge // 2
+        else:
+            reps_undirected = exposures_per_edge
+
+        eye = np.eye(adj.shape[0], dtype=np.float32)
+
+        for block in blocks:
+            sub_ud = undirected_edges[block]  # edges that belong to this block
+
+            if len(sub_ud) == 0:
                 continue
 
-            sub_ud = undirected_edges[block]  # (k,2)
             if split:
-                # forward in this block
-                idx = np.repeat(np.arange(len(sub_ud)), reps_this_block + (1 if rem and bi == 0 else 0))
+                # forward repeats
+                idx = np.repeat(np.arange(len(sub_ud)), reps_fwd)
                 rng.shuffle(idx)
                 e_fwd = sub_ud[idx]
-                Xs.append(eye[e_fwd[:,0]]); Ys.append(e_fwd[:,1].astype(np.int64))
-                # backward in this block
-                idx = np.repeat(np.arange(len(sub_ud)), reps_this_block)
+                Xs.append(eye[e_fwd[:, 0]]); Ys.append(e_fwd[:, 1].astype(np.int64))
+
+                # backward repeats
+                idx = np.repeat(np.arange(len(sub_ud)), reps_bwd)
                 rng.shuffle(idx)
                 e_bwd = sub_ud[:, ::-1][idx]
-                Xs.append(eye[e_bwd[:,0]]); Ys.append(e_bwd[:,1].astype(np.int64))
+                Xs.append(eye[e_bwd[:, 0]]); Ys.append(e_bwd[:, 1].astype(np.int64))
             else:
-                idx = np.repeat(np.arange(len(sub_ud)), reps_this_block)
+                # undirected repeats
+                idx = np.repeat(np.arange(len(sub_ud)), reps_undirected)
                 rng.shuffle(idx)
                 e = sub_ud[idx]
-                Xs.append(eye[e[:,0]]); Ys.append(e[:,1].astype(np.int64))
+                Xs.append(eye[e[:, 0]]); Ys.append(e[:, 1].astype(np.int64))
 
         if not Xs:
-            return make_sequence_equalized(adj, "I", seed, exposures_per_edge, nlists, bidirectional=bidirectional)
+            raise RuntimeError("Blocked schedule produced no trials; check inputs.")
         X = np.vstack(Xs); Y = np.concatenate(Ys)
         return X, Y
 
@@ -262,11 +263,11 @@ if __name__ == "__main__":
     ], dtype=np.int32)
 
     # sweep
-    L2_grid = [6, 12, 36, 108, 216, 324]
+    L2_grid = [6, 36, 108, 216, 324]
 
     # shared hyperparams (keep your current choices)
     common = dict(
-        n_models=10,
+        n_models=100,
         L1=12,
         n_hidden=8,
         p_drop=0.0,
