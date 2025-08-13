@@ -273,7 +273,7 @@ if __name__ == "__main__":
         lr=2.5e-4,
         wd=5e-4,
         epochs=1,
-        exposures_per_edge=20,
+        exposures_per_edge=40,
         nlists=4,
         seed=base_seed,
     )
