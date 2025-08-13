@@ -60,7 +60,7 @@ def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 10000, seed:
 # ------------------ sequence builder (equal exposures) ------------------
 def make_sequence_equalized(adj: np.ndarray, regime: str, seed: int,
                             exposures_per_edge: int = 20, nlists: int = 4,
-                            bidirectional: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+                            bidirectional: bool = True) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     undirected_edges = edges_from_adj(adj)                 # shape (E, 2)
     if bidirectional:
