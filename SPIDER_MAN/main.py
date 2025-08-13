@@ -210,7 +210,7 @@ def relative_distance_accuracy(n_items, sims, D):
 # ------------------ experiment runner ------------------
 def run(adj, L2_grid, n_models=5, regime="I", seed=123,
         L1=12, n_hidden=12, p_drop=0.0, lr=2.5e-4, wd=5e-4,
-        epochs=50, exposures_per_edge=20, nlists=4):
+        epochs=50, exposures_per_edge=20, nlists=4,label_smoothing=0.9):
     set_seed(seed)
     dev = device()
     n_items = adj.shape[0]
@@ -223,7 +223,7 @@ def run(adj, L2_grid, n_models=5, regime="I", seed=123,
             X, Y = make_sequence_equalized(adj, regime, seed + 1000*rep + 13*L2,
                                            exposures_per_edge=exposures_per_edge, nlists=nlists)
             model = SimpleCE(n_items, L1=L1, L2=L2, n_hidden=n_hidden, p_drop=p_drop, init="he").to(dev)
-            last_loss = train_ce(model, X, Y, epochs=epochs, lr=lr, wd=wd, dev=dev,label_smoothing=0.95)
+            last_loss = train_ce(model, X, Y, epochs=epochs, lr=lr, wd=wd, dev=dev,label_smoothing=label_smoothing)
 
             H = hidden_activations(model, n_items, dev)
             Hn = H / (np.linalg.norm(H, axis=1, keepdims=True) + 1e-8)
@@ -270,13 +270,14 @@ if __name__ == "__main__":
         n_models=100,
         L1=12,
         n_hidden=8,
-        p_drop=0.0,
-        lr=5e-4,
-        wd=1.5e-4,
-        epochs=1,
+        p_drop=0.05,
+        lr=3e-4,
+        wd=2e-4,
+        epochs=50,
         exposures_per_edge=20,
         nlists=4,
         seed=base_seed,
+        label_smoothing=1
     )
 
     # run both regimes with the same seed
