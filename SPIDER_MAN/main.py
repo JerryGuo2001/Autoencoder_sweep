@@ -16,11 +16,19 @@ import pandas as pd
 import torch, torch.nn as nn, torch.nn.functional as F
 import networkx as nx
 from scipy.spatial.distance import cdist
-
+import itertools, random
+from typing import List, Tuple, Optional
+import numpy as np
+import pandas as pd
+import torch, torch.nn as nn, torch.nn.functional as F
+import networkx as nx
+from scipy.spatial.distance import cdist
+from collections import defaultdict
 
 
 partition = int(sys.argv[1])
 callback= int(sys.argv[2])
+
 
 # ------------------ utils ------------------
 def set_seed(s=123):
@@ -95,7 +103,7 @@ def schedule_blocked_strict(adj: np.ndarray, nlists: int = 4, seed: int = 123,
     Y = both[:, 1].astype(np.int64)
     return X, Y
 
-
+# ------------------ model ------------------
 class MinimalANN(nn.Module):
     def __init__(self, n_items=12, L1=12, L2=36, E3=12, init="he",
                  dropout_p: float = 0.3, input_dropout_p: float = 0.0):
@@ -125,14 +133,12 @@ class MinimalANN(nn.Module):
                     nn.init.zeros_(m.bias)
 
     def encode(self, x):
-        # dropout only active in model.train()
         x = self.in_drop(x)
         x = F.relu(self.E1(x))
         x = F.relu(self.E2(x))
-        x = self.drop(x)        # <— here
+        x = self.drop(x)
         h = self.E3(x)          # linear internal layer
         return h
-
 
     def forward(self, x):
         h = self.encode(x)
@@ -161,15 +167,12 @@ def train(model, adj, regime, seed, epochs, lr, wd, nlists=4, exposures_per_edge
     last = 0.0
     for ep in range(epochs):
         if regime == "I":
-            # still reshuffle each epoch = truly interleaved
             X, Y = schedule_interleaved(adj, seed + ep*9973)
         else:
-            # one block per epoch, no reshuffle, contiguous exposure
-            X, Y = schedule_blocked_strict(adj, nlists=nlists, seed=seed, exposures_per_edge=exposures_per_edge, epoch_index=ep)
-
+            X, Y = schedule_blocked_strict(adj, nlists=nlists, seed=seed,
+                                           exposures_per_edge=exposures_per_edge, epoch_index=ep)
         last = train_epoch_stream(model, X, Y, dev, opt, ce)
     return last
-
 
 # ------------------ evaluation (activations-only) ------------------
 def hidden_activations(model, n_items, dev):
@@ -179,7 +182,7 @@ def hidden_activations(model, n_items, dev):
         H = model.encode(I)
     return H.detach().cpu().numpy()
 
-# ----- local-search distance using cosine over activations (beam) + softmax choice -----
+# ----- local-search distance using cosine over activations (ε-greedy + softmax choice) -----
 def softmax_choice_from_hops(h12: float, h13: float, temperature: float = 1.0,
                              sample: bool = False, rng: Optional[np.random.Generator] = None):
     """
@@ -206,64 +209,66 @@ def softmax_choice_from_hops(h12: float, h13: float, temperature: float = 1.0,
     return pick, probs
 
 def beam_hops(adj: np.ndarray, sims: np.ndarray, src: int, tgt: int,
-              beam_width: int = 3, max_steps: int = 10, require_improve: bool = True) -> int:
+              beam_width: int = 1, max_steps: int = 8,
+              require_improve: bool = False,
+              eps: float = 0.15,
+              rng: Optional[np.random.Generator] = None) -> int:
     """
-    Simplified greedy hop counter:
-      - Start at src.
-      - Repeatedly move to the neighbor with highest cosine similarity to the target (from sims).
-      - Stop if we reach tgt or after max_steps (default 10).
-      - If not reached within max_steps, return np.inf (caller can randomly choose an option).
-
-    Notes:
-      * beam_width and require_improve are ignored; kept only for API compatibility.
-      * Uses activations-only similarity (sims) to guide moves.
+    Greedy navigation with small ε-greedy detours:
+      - beam_width=1 greedy pick by similarity-to-target,
+      - with prob `eps`, choose the *second-best* neighbor (if available).
+      - revisits allowed, no strict-improve rule (so no brittle fails),
+      - horizon limited by `max_steps` (default 8).
+    Returns hops if tgt reached; else np.inf.
     """
     if src == tgt:
         return 0
+    if rng is None:
+        rng = np.random.default_rng()
 
     current = src
-    visited = {src}
 
     for steps in range(1, max_steps + 1):
-        # neighbors of current node
         nbrs = np.where(adj[current] > 0)[0]
         if nbrs.size == 0:
-            return np.inf  # dead end
-        # prefer unvisited neighbors; if none, allow revisits to avoid hard dead-ends
-        unvisited = [v for v in nbrs if v not in visited]
-        candidates = unvisited if len(unvisited) > 0 else list(nbrs)
+            return np.inf
 
-        # pick the neighbor with highest similarity to the target
-        next_node = max(candidates, key=lambda v: sims[v, tgt])
+        # scores to target
+        scores = sims[nbrs, tgt].astype(float)
+        order = np.argsort(-scores)  # descending
+        best = nbrs[order[0]]
+
+        # ε-greedy: sometimes take the second-best
+        if (len(order) > 1) and (rng.random() < eps):
+            next_node = int(nbrs[order[1]])
+        else:
+            next_node = int(best)
 
         if next_node == tgt:
             return steps
 
-        visited.add(next_node)
         current = next_node
 
-    # not reached within max_steps
     return np.inf
 
-from collections import defaultdict
-
 def distance_accuracy(adj: np.ndarray, H: np.ndarray, D_true: np.ndarray,
-                      beam_width: int = 3, require_improve: bool = True,
-                      softmax_temperature: float = 1.0, sample_softmax: bool = False,
+                      beam_width: int = 1, require_improve: bool = False,
+                      softmax_temperature: float = 1.0, sample_softmax: bool = True,
                       rng: Optional[np.random.Generator] = None,
                       eval_noise_std: float = 0.0,
-                      max_dd: Optional[int] = 4):
+                      max_dd: Optional[int] = 4,
+                      # ε-greedy knob & horizon
+                      eps: float = 0.15,
+                      max_steps: int = 8):
     """
-    Relative distance via similarity-guided navigation:
-      • Skip triple if ANY distance in {D(i1,i2), D(i3,i2), D(i1,i3)} == 1.
-      • If both searches fail, prediction is a random coin flip.
-      • If distances tie, ground truth is a random coin flip (expected 50%).
+    Relative distance via ε-greedy similarity-guided navigation:
+      • Skip triples if any direct neighbor relation exists (distance == 1).
+      • If both searches fail, fall back to a coin flip (keeps accuracy from collapsing).
       • Bucket by |D(i1,i2) - D(i1,i3)|; values > max_dd are binned into max_dd.
     """
     if rng is None:
         rng = np.random.default_rng()
 
-    # Optional noise in evaluation
     if eval_noise_std > 0.0:
         H = H + rng.normal(0.0, eval_noise_std, size=H.shape)
 
@@ -272,32 +277,32 @@ def distance_accuracy(adj: np.ndarray, H: np.ndarray, D_true: np.ndarray,
     buckets = defaultdict(list)
 
     for i1, i2, i3 in itertools.permutations(range(n), 3):
-        # --- skip if any distance is exactly 1 ---
+        # skip if any pair is 1-hop
         if (D_true[i1, i2] == 1) or (D_true[i3, i2] == 1) or (D_true[i1, i3] == 1):
             continue
 
-        # True hop distances
         d12 = D_true[i1, i2]
         d13 = D_true[i1, i3]
 
-        # Bucket index (absolute diff)
         dd = int(abs(d12 - d13))
         if (max_dd is not None) and (dd > max_dd):
             dd = max_dd
 
-        # Ground truth
+        # ground truth choice
         if np.isfinite(d12) and np.isfinite(d13) and (d12 != d13):
             gt_is_i2 = d12 < d13
         else:
-            gt_is_i2 = bool(rng.integers(0, 2))  # tie/infinite => coin flip
+            gt_is_i2 = bool(rng.integers(0, 2))
 
-        # Navigation hops
-        h12 = beam_hops(adj, sims, i1, i2, beam_width=beam_width, max_steps=10, require_improve=require_improve)
-        h13 = beam_hops(adj, sims, i1, i3, beam_width=beam_width, max_steps=10, require_improve=require_improve)
+        # ε-greedy navigation
+        h12 = beam_hops(adj, sims, i1, i2, beam_width=beam_width, max_steps=max_steps,
+                        require_improve=require_improve, eps=eps, rng=rng)
+        h13 = beam_hops(adj, sims, i1, i3, beam_width=beam_width, max_steps=max_steps,
+                        require_improve=require_improve, eps=eps, rng=rng)
 
-        # Prediction
+        # decision
         if np.isinf(h12) and np.isinf(h13):
-            pred_is_i2 = bool(rng.integers(0, 2))
+            pred_is_i2 = bool(rng.integers(0, 2))  # gentle fallback
         else:
             pick, _ = softmax_choice_from_hops(h12, h13,
                                                temperature=softmax_temperature,
@@ -309,12 +314,11 @@ def distance_accuracy(adj: np.ndarray, H: np.ndarray, D_true: np.ndarray,
 
     return {k: (100.0 * np.mean(v) if len(v) else np.nan) for k, v in buckets.items()}
 
-
-
 # ------------------ experiment runner (minimal) ------------------
 def run(adj, L2_grid, n_models=5, regime="I", seed=123, epochs=1, lr=2.78e-4, wd=1.62e-2,
-        L1=12, E3=12, beam_width=3, require_improve=True,
-        softmax_temperature: float = 1.0, sample_softmax: bool = False, eval_noise_std: float = 0.0,drop_out=0.1):
+        L1=12, E3=12, beam_width=1, require_improve=False,
+        softmax_temperature: float = 1.0, sample_softmax: bool = True, eval_noise_std: float = 0.0,
+        drop_out=0.1, eps: float = 0.15, max_steps: int = 8):
     set_seed(seed)
     dev = device()
     n_items = adj.shape[0]
@@ -325,8 +329,8 @@ def run(adj, L2_grid, n_models=5, regime="I", seed=123, epochs=1, lr=2.78e-4, wd
         for rep in range(n_models):
             model = MinimalANN(
                 n_items=n_items, L1=L1, L2=L2, E3=E3, init="he",
-                dropout_p=0.3,          # try 0.2–0.5; 0.3 is a good start
-                input_dropout_p= drop_out
+                dropout_p=0.3,
+                input_dropout_p=drop_out
             ).to(dev)
 
             last_loss = train(model, adj, regime, seed + 1000*rep + 13*L2, epochs=epochs, lr=lr, wd=wd)
@@ -334,7 +338,7 @@ def run(adj, L2_grid, n_models=5, regime="I", seed=123, epochs=1, lr=2.78e-4, wd
             # Activations-only
             H = hidden_activations(model, n_items, dev)
 
-            # Per-model RNG so stochastic softmax decisions vary by rep/L2 but are reproducible
+            # Per-model RNG so stochastic decisions vary by rep/L2 but are reproducible
             rng = np.random.default_rng(seed + 37*rep + 11*L2)
 
             acc = distance_accuracy(
@@ -344,7 +348,9 @@ def run(adj, L2_grid, n_models=5, regime="I", seed=123, epochs=1, lr=2.78e-4, wd
                 softmax_temperature=softmax_temperature,
                 sample_softmax=sample_softmax,
                 rng=rng,
-                eval_noise_std=eval_noise_std
+                eval_noise_std=eval_noise_std,
+                eps=eps,
+                max_steps=max_steps
             )
 
             # Ensure all buckets 1..4 exist
@@ -364,6 +370,9 @@ def run(adj, L2_grid, n_models=5, regime="I", seed=123, epochs=1, lr=2.78e-4, wd
 
     return pd.DataFrame.from_records(records)
 
+def log_uniform(low, high, size=None):
+    """Sample log-uniformly between low and high."""
+    return np.exp(np.random.uniform(np.log(low), np.log(high), size))
 
 # ------------------ run on your graph ------------------
 if __name__ == "__main__":
@@ -388,20 +397,23 @@ if __name__ == "__main__":
 
     L2_grid = [6, 36, 108, 216, 324]  # width of E2 (pattern separation capacity)
 
-    # Minimal hyperparams (paper-inspired) + softmax choice controls
+    # Minimal hyperparams (paper-inspired) + gentle stochastic distance judgment
     common = dict(
-        n_models=1000,
-        epochs=1,              # adjust as needed
-        lr=np.random.rand(),
-        wd=np.random.rand(),
+        n_models=10,
+        epochs=1,
+        lr=log_uniform(1e-4, 1e-2),
+        wd=log_uniform(1e-6, 1e-2),
         L1=12, E3=12,
-        beam_width=1,              # use the argument you set here
-        require_improve=True,
-        softmax_temperature=10,   # softer choices
-        eval_noise_std=2,
-        sample_softmax=True,       # stochastic decisions
+        beam_width=1,                # greedy
+        require_improve=False,       # no strict improvement
+        softmax_temperature=5,     # reasonable sharpness
+        eval_noise_std=0,          # keep rep fixed
+        sample_softmax=True,         # stochastic final pick
         seed=base_seed,
-        drop_out=0.5
+        drop_out=0.2,
+        # ε-greedy navigation settings
+        eps=0,                    # 15% second-best detours
+        max_steps=10                  # limited planning horizon
     )
 
     df_B = run(Gedges, L2_grid, regime="B", **common)
