@@ -8,10 +8,18 @@ from scipy.spatial.distance import cdist
 import pandas as pd
 from typing import List
 import sys
+import itertools, random
+from typing import List, Tuple, Optional
+import numpy as np
+import pandas as pd
+import torch, torch.nn as nn, torch.nn.functional as F
+import networkx as nx
+from scipy.spatial.distance import cdist
+from __future__ import annotations
+
 
 partition = int(sys.argv[1])
 callback= int(sys.argv[2])
-
 
 # ------------------ utils ------------------
 def set_seed(s=123):
@@ -30,19 +38,16 @@ def edges_from_adj(adj: np.ndarray):
 def shortest_paths(adj: np.ndarray):
     return np.asarray(nx.floyd_warshall_numpy(nx.from_numpy_array(adj)), dtype=float)
 
-def cosine_sim(a, b):  # for evaluation only
-    return 1 - cdist(a, b, metric="cosine")
-
 # ------------------ blocked partition (matching per block) ------------------
-def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 10000, seed: int = 123) -> List[np.ndarray]:
+def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 5000, seed: int = 123) -> List[np.ndarray]:
     G = nx.from_numpy_array(adj)
     edges = np.array(list(G.edges()), dtype=int)
-    nE = len(edges); rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(seed)
 
     def try_one():
         used = [set() for _ in range(nlists)]
         blocks = [[] for _ in range(nlists)]
-        order = np.arange(nE); rng.shuffle(order)
+        order = np.arange(len(edges)); rng.shuffle(order)
         for ei in order:
             u, v = edges[ei]
             for c in range(nlists):
@@ -55,249 +60,357 @@ def find_blocks_once(adj: np.ndarray, nlists: int = 4, tries: int = 10000, seed:
     for _ in range(tries):
         out = try_one()
         if out is not None: return out
-    raise RuntimeError("Could not find a block partition; raise nlists/tries.")
+    raise RuntimeError("Could not find a block partition; try raising nlists/tries.")
 
-# ------------------ sequence builder (equal exposures) ------------------
-def make_sequence_equalized(adj: np.ndarray, regime: str, seed: int,
-                            exposures_per_edge: int = 20, nlists: int = 4,
-                            bidirectional: bool = True) -> tuple[np.ndarray, np.ndarray]:
+# ------------------ schedules: one exposure per directed edge ------------------
+def schedule_interleaved(adj: np.ndarray, seed: int) -> Tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
-    undirected_edges = edges_from_adj(adj)                 # shape (E, 2)
-    if bidirectional:
-        # duplicate both directions but keep the SAME total exposures per undirected edge
-        # so each direction gets exposures_per_edge // 2 (±1 for remainder)
-        edges = np.vstack([undirected_edges, undirected_edges[:, ::-1]])
-        # when we assign repeats below, we’ll split evenly across the two halves
-        split = True
-    else:
-        edges = undirected_edges
-        split = False
+    undirected = edges_from_adj(adj)
+    directed = np.vstack([undirected, undirected[:, ::-1]])  # both directions once
+    idx = np.arange(directed.shape[0]); rng.shuffle(idx)
+    e = directed[idx]
+    n = adj.shape[0]
+    X = np.eye(n, dtype=np.float32)[e[:,0]]
+    Y = e[:,1].astype(np.int64)
+    return X, Y
 
-    n_items = adj.shape[0]
-    eye = np.eye(n_items, dtype=np.float32)
+def schedule_blocked_strict(adj: np.ndarray, nlists: int = 4, seed: int = 123,
+                            exposures_per_edge: int = 1, epoch_index: int = 0):
+    """
+    Blocked schedule: present only ONE block this epoch, all its directed edges
+    (optionally repeated), contiguous and without reshuffle.
+    Blocks are fixed by `seed` and we cycle: epoch 0 -> block 0, epoch 1 -> block 1, etc.
+    """
+    undirected = edges_from_adj(adj)
+    blocks = find_blocks_once(adj, nlists=nlists, seed=seed)  # fixed partition
+    b = blocks[epoch_index % nlists]                          # pick block for this epoch
+    sub = undirected[b]
+    both = np.vstack([sub, sub[:, ::-1]])                     # both directions
+    if exposures_per_edge > 1:
+        both = np.repeat(both, exposures_per_edge, axis=0)    # consecutive repeats keep contiguity
 
-    if regime == "I":
-        if split:
-            per_dir = exposures_per_edge // 2
-            rem = exposures_per_edge % 2
-            # build index list for the two halves
-            e1 = edges[:len(edges)//2]; e2 = edges[len(edges)//2:]
-            idx1 = np.repeat(np.arange(len(e1)), per_dir + (1 if rem > 0 else 0))
-            idx2 = np.repeat(np.arange(len(e2)), per_dir)
-            rng.shuffle(idx1); rng.shuffle(idx2)
-            e = np.vstack([e1[idx1], e2[idx2]])
-            rng.shuffle(e)
-        else:
-            idx = np.repeat(np.arange(len(edges)), exposures_per_edge)
-            rng.shuffle(idx)
-            e = edges[idx]
-        return eye[e[:,0]], e[:,1].astype(np.int64)
-
-    if regime == "B":
-        blocks = find_blocks_once(adj, nlists=nlists, seed=seed)
-        Xs, Ys = [], []
-
-        # exposures per edge for each direction
-        if split:  # bidirectional
-            reps_fwd = exposures_per_edge // 2 + (exposures_per_edge % 2)  # forward gets the +1 if odd
-            reps_bwd = exposures_per_edge // 2
-        else:
-            reps_undirected = exposures_per_edge
-
-        eye = np.eye(adj.shape[0], dtype=np.float32)
-
-        for block in blocks:
-            sub_ud = undirected_edges[block]  # edges that belong to this block
-
-            if len(sub_ud) == 0:
-                continue
-
-            if split:
-                # forward repeats
-                idx = np.repeat(np.arange(len(sub_ud)), reps_fwd)
-                rng.shuffle(idx)
-                e_fwd = sub_ud[idx]
-                Xs.append(eye[e_fwd[:, 0]]); Ys.append(e_fwd[:, 1].astype(np.int64))
-
-                # backward repeats
-                idx = np.repeat(np.arange(len(sub_ud)), reps_bwd)
-                rng.shuffle(idx)
-                e_bwd = sub_ud[:, ::-1][idx]
-                Xs.append(eye[e_bwd[:, 0]]); Ys.append(e_bwd[:, 1].astype(np.int64))
-            else:
-                # undirected repeats
-                idx = np.repeat(np.arange(len(sub_ud)), reps_undirected)
-                rng.shuffle(idx)
-                e = sub_ud[idx]
-                Xs.append(eye[e[:, 0]]); Ys.append(e[:, 1].astype(np.int64))
-
-        if not Xs:
-            raise RuntimeError("Blocked schedule produced no trials; check inputs.")
-        X = np.vstack(Xs); Y = np.concatenate(Ys)
-        return X, Y
-
-    raise ValueError("regime must be 'I' or 'B'")
+    n = adj.shape[0]
+    X = np.eye(n, dtype=np.float32)[both[:, 0]]
+    Y = both[:, 1].astype(np.int64)
+    return X, Y
 
 
-# ------------------ model: tiny MLP + linear classifier (plain CE) ------------------
-class SimpleCE(nn.Module):
-    def __init__(self, n_items, L1=12, L2=36, n_hidden=12, p_drop=0.0, init="he"):
+class MinimalANN(nn.Module):
+    def __init__(self, n_items=12, L1=12, L2=36, E3=12, init="he",
+                 dropout_p: float = 0.3, input_dropout_p: float = 0.0):
         super().__init__()
+        self.in_drop = nn.Dropout(p=input_dropout_p)
         self.E1 = nn.Linear(n_items, L1)
         self.E2 = nn.Linear(L1, L2)
-        self.E3 = nn.Linear(L2, n_hidden)
-        self.drop = nn.Dropout(p_drop)
-        self.out = nn.Linear(n_hidden, n_items)
+        self.drop = nn.Dropout(p=dropout_p)     # <— dropout right after E2
+        self.E3 = nn.Linear(L2, E3)
+        self.out = nn.Linear(E3, n_items)
         self._init(init)
-
-    def _init(self, how):
+    
+    def _init(self, how: str):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                if how=="xavier": nn.init.xavier_uniform_(m.weight)
-                elif how=="he": nn.init.kaiming_uniform_(m.weight, nonlinearity="relu")
-                elif how=="lecun": nn.init.normal_(m.weight, 0, (1/m.weight.size(1))**0.5)
-                elif how=="orthogonal": nn.init.orthogonal_(m.weight)
-                else: raise ValueError(how)
-                if m.bias is not None: nn.init.zeros_(m.bias)
+                if how == "he":
+                    nn.init.kaiming_uniform_(m.weight, nonlinearity="relu")
+                elif how == "xavier":
+                    nn.init.xavier_uniform_(m.weight)
+                elif how == "lecun":
+                    nn.init.normal_(m.weight, 0, (1 / m.weight.size(1))**0.5)
+                elif how == "orthogonal":
+                    nn.init.orthogonal_(m.weight)
+                else:
+                    raise ValueError(how)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def encode(self, x):
+        # dropout only active in model.train()
+        x = self.in_drop(x)
         x = F.relu(self.E1(x))
-        x = self.drop(F.relu(self.E2(x)))
-        return self.E3(x)  # linear hidden
+        x = F.relu(self.E2(x))
+        x = self.drop(x)        # <— here
+        h = self.E3(x)          # linear internal layer
+        return h
+
 
     def forward(self, x):
         h = self.encode(x)
-        return self.out(h), h  # logits, hidden
+        logits = self.out(h)   # logits for CE
+        return logits, h
 
-# ------------------ training: per-trial CE (simple) ------------------
-def train_ce(model, X_np, Y_np, epochs=50, lr=5e-4, wd=1e-4, dev=None, label_smoothing=0.02):
-    dev = dev or device()
+# ------------------ training (essentials only) ------------------
+def train_epoch_stream(model, X_np, Y_np, dev, opt, ce):
     X = torch.from_numpy(X_np).to(dev)
     Y = torch.from_numpy(Y_np).to(dev)
-    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
-    ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+    last_loss = 0.0
+    model.train()
+    for i in range(X.shape[0]):  # batch size = 1
+        logits, _ = model(X[i:i+1])
+        loss = ce(logits, Y[i:i+1])
+        opt.zero_grad(); loss.backward(); opt.step()
+        last_loss = float(loss.item())
+    return last_loss
 
-    for _ in range(epochs):
-        model.train()
-        for i in range(X.shape[0]):  # strict online updates
-            logits, _ = model(X[i:i+1])
-            loss = ce(logits, Y[i:i+1])
-            opt.zero_grad(); loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            opt.step()
-    return float(loss.item())
+def train(model, adj, regime, seed, epochs, lr, wd, nlists=4, exposures_per_edge=1):
+    dev = device()
+    model.to(dev)
+    ce = nn.CrossEntropyLoss()
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)  # keep optimizer across epochs
 
-# ------------------ evaluation: relative distance accuracy ------------------
+    last = 0.0
+    for ep in range(epochs):
+        if regime == "I":
+            # still reshuffle each epoch = truly interleaved
+            X, Y = schedule_interleaved(adj, seed + ep*9973)
+        else:
+            # one block per epoch, no reshuffle, contiguous exposure
+            X, Y = schedule_blocked_strict(adj, nlists=nlists, seed=seed, exposures_per_edge=exposures_per_edge, epoch_index=ep)
+
+        last = train_epoch_stream(model, X, Y, dev, opt, ce)
+    return last
+
+
+# ------------------ evaluation (activations-only) ------------------
 def hidden_activations(model, n_items, dev):
     I = torch.eye(n_items, dtype=torch.float32, device=dev)
     model.eval()
     with torch.no_grad():
-        _, H = model(I)
+        H = model.encode(I)
     return H.detach().cpu().numpy()
 
-def relative_distance_accuracy(n_items, sims, D):
-    buckets = {1:[], 2:[], 3:[], 4:[]}
-    for i1, i2, i3 in itertools.permutations(range(n_items), 3):
-        if D[i1,i2] <= 1 or D[i3,i2] <= 1 or D[i1,i3] <= 1:  # exclude identical/direct
-            continue
-        dd = int(abs(D[i1,i2] - D[i3,i2]))
-        if dd not in buckets: continue
-        correct = 0 if D[i1,i2] < D[i3,i2] else 1
-        model_choice = 0 if sims[i1,i2] > sims[i3,i2] else 1
-        buckets[dd].append(1 if model_choice==correct else 0)
-    return {k: (100*np.mean(v) if len(v) else np.nan) for k,v in buckets.items()}
+# ----- local-search distance using cosine over activations (beam) + softmax choice -----
+def softmax_choice_from_hops(h12: float, h13: float, temperature: float = 1.0,
+                             sample: bool = False, rng: Optional[np.random.Generator] = None):
+    """
+    Convert hop counts into a softmax choice over candidates:
+      probs ~ softmax( -hops / tau )
+    Returns (pick_idx, probs_array). pick_idx = 0 => choose i2; 1 => choose i3.
+    """
+    vals = np.array([h12, h13], dtype=float)
+    big = 1e6  # penalty for failures
+    vals[np.isinf(vals)] = big
 
-# ------------------ experiment runner ------------------
-def run(adj, L2_grid, n_models=5, regime="I", seed=123,
-        L1=12, n_hidden=12, p_drop=0.0, lr=2.5e-4, wd=5e-4,
-        epochs=50, exposures_per_edge=20, nlists=4,label_smoothing=0.9):
+    tau = max(1e-8, float(temperature))
+    logits = -vals / tau
+    logits -= np.max(logits)  # numerical stability
+    exps = np.exp(logits)
+    probs = exps / (exps.sum() + 1e-12)
+
+    if sample:
+        if rng is None:
+            rng = np.random.default_rng()
+        pick = int(rng.choice([0, 1], p=probs))
+    else:
+        pick = int(np.argmax(probs))
+    return pick, probs
+
+def beam_hops(adj: np.ndarray, sims: np.ndarray, src: int, tgt: int,
+              beam_width: int = 3, max_steps: int = 10, require_improve: bool = True) -> int:
+    """
+    Simplified greedy hop counter:
+      - Start at src.
+      - Repeatedly move to the neighbor with highest cosine similarity to the target (from sims).
+      - Stop if we reach tgt or after max_steps (default 10).
+      - If not reached within max_steps, return np.inf (caller can randomly choose an option).
+
+    Notes:
+      * beam_width and require_improve are ignored; kept only for API compatibility.
+      * Uses activations-only similarity (sims) to guide moves.
+    """
+    if src == tgt:
+        return 0
+
+    current = src
+    visited = {src}
+
+    for steps in range(1, max_steps + 1):
+        # neighbors of current node
+        nbrs = np.where(adj[current] > 0)[0]
+        if nbrs.size == 0:
+            return np.inf  # dead end
+        # prefer unvisited neighbors; if none, allow revisits to avoid hard dead-ends
+        unvisited = [v for v in nbrs if v not in visited]
+        candidates = unvisited if len(unvisited) > 0 else list(nbrs)
+
+        # pick the neighbor with highest similarity to the target
+        next_node = max(candidates, key=lambda v: sims[v, tgt])
+
+        if next_node == tgt:
+            return steps
+
+        visited.add(next_node)
+        current = next_node
+
+    # not reached within max_steps
+    return np.inf
+
+from collections import defaultdict
+
+def distance_accuracy(adj: np.ndarray, H: np.ndarray, D_true: np.ndarray,
+                      beam_width: int = 3, require_improve: bool = True,
+                      softmax_temperature: float = 1.0, sample_softmax: bool = False,
+                      rng: Optional[np.random.Generator] = None,
+                      eval_noise_std: float = 0.0,
+                      max_dd: Optional[int] = 4):
+    """
+    Relative distance via similarity-guided navigation:
+      • Skip triple if ANY distance in {D(i1,i2), D(i3,i2), D(i1,i3)} == 1.
+      • If both searches fail, prediction is a random coin flip.
+      • If distances tie, ground truth is a random coin flip (expected 50%).
+      • Bucket by |D(i1,i2) - D(i1,i3)|; values > max_dd are binned into max_dd.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    # Optional noise in evaluation
+    if eval_noise_std > 0.0:
+        H = H + rng.normal(0.0, eval_noise_std, size=H.shape)
+
+    sims = 1 - cdist(H, H, metric="cosine")
+    n = adj.shape[0]
+    buckets = defaultdict(list)
+
+    for i1, i2, i3 in itertools.permutations(range(n), 3):
+        # --- skip if any distance is exactly 1 ---
+        if (D_true[i1, i2] == 1) or (D_true[i3, i2] == 1) or (D_true[i1, i3] == 1):
+            continue
+
+        # True hop distances
+        d12 = D_true[i1, i2]
+        d13 = D_true[i1, i3]
+
+        # Bucket index (absolute diff)
+        dd = int(abs(d12 - d13))
+        if (max_dd is not None) and (dd > max_dd):
+            dd = max_dd
+
+        # Ground truth
+        if np.isfinite(d12) and np.isfinite(d13) and (d12 != d13):
+            gt_is_i2 = d12 < d13
+        else:
+            gt_is_i2 = bool(rng.integers(0, 2))  # tie/infinite => coin flip
+
+        # Navigation hops
+        h12 = beam_hops(adj, sims, i1, i2, beam_width=beam_width, max_steps=10, require_improve=require_improve)
+        h13 = beam_hops(adj, sims, i1, i3, beam_width=beam_width, max_steps=10, require_improve=require_improve)
+
+        # Prediction
+        if np.isinf(h12) and np.isinf(h13):
+            pred_is_i2 = bool(rng.integers(0, 2))
+        else:
+            pick, _ = softmax_choice_from_hops(h12, h13,
+                                               temperature=softmax_temperature,
+                                               sample=sample_softmax,
+                                               rng=rng)
+            pred_is_i2 = (pick == 0)
+
+        buckets[dd].append(1 if pred_is_i2 == gt_is_i2 else 0)
+
+    return {k: (100.0 * np.mean(v) if len(v) else np.nan) for k, v in buckets.items()}
+
+
+
+# ------------------ experiment runner (minimal) ------------------
+def run(adj, L2_grid, n_models=5, regime="I", seed=123, epochs=1, lr=2.78e-4, wd=1.62e-2,
+        L1=12, E3=12, beam_width=3, require_improve=True,
+        softmax_temperature: float = 1.0, sample_softmax: bool = False, eval_noise_std: float = 0.0,drop_out=0.1):
     set_seed(seed)
     dev = device()
     n_items = adj.shape[0]
-    D = shortest_paths(adj)
+    D_true = shortest_paths(adj)
     records = []
 
     for L2 in L2_grid:
         for rep in range(n_models):
-            set_seed(seed + 31*rep + 7*L2)
-            X, Y = make_sequence_equalized(adj, regime, seed + 1000*rep + 13*L2,
-                                           exposures_per_edge=exposures_per_edge, nlists=nlists)
-            model = SimpleCE(n_items, L1=L1, L2=L2, n_hidden=n_hidden, p_drop=p_drop, init="he").to(dev)
-            last_loss = train_ce(model, X, Y, epochs=epochs, lr=lr, wd=wd, dev=dev,label_smoothing=label_smoothing)
+            model = MinimalANN(
+                n_items=n_items, L1=L1, L2=L2, E3=E3, init="he",
+                dropout_p=0.3,          # try 0.2–0.5; 0.3 is a good start
+                input_dropout_p= drop_out
+            ).to(dev)
 
+            last_loss = train(model, adj, regime, seed + 1000*rep + 13*L2, epochs=epochs, lr=lr, wd=wd)
+
+            # Activations-only
             H = hidden_activations(model, n_items, dev)
-            Hn = H / (np.linalg.norm(H, axis=1, keepdims=True) + 1e-8)
-            sims = cosine_sim(Hn, Hn)
-            acc = relative_distance_accuracy(n_items, sims, D)
 
-            records.append({"regime":regime, "L2":L2, "rep":rep,
-                            "acc_d1":acc[1], "acc_d2":acc[2], "acc_d3":acc[3], "acc_d4":acc[4],
-                            "final_loss": last_loss})
-            print(f"[{regime}] L2={L2:>3} rep={rep} | d1={acc[1]:.1f} d2={acc[2]:.1f} d3={acc[3]:.1f} d4={acc[4]:.1f}  loss={last_loss:.4f}")
+            # Per-model RNG so stochastic softmax decisions vary by rep/L2 but are reproducible
+            rng = np.random.default_rng(seed + 37*rep + 11*L2)
+
+            acc = distance_accuracy(
+                adj, H, D_true,
+                beam_width=beam_width,
+                require_improve=require_improve,
+                softmax_temperature=softmax_temperature,
+                sample_softmax=sample_softmax,
+                rng=rng,
+                eval_noise_std=eval_noise_std
+            )
+
+            # Ensure all buckets 1..4 exist
+            acc_full = {1: np.nan, 2: np.nan, 3: np.nan, 4: np.nan}
+            acc_full.update(acc)
+
+            records.append({
+                "regime": regime, "L2": L2, "rep": rep,
+                "acc_d1": acc_full[1], "acc_d2": acc_full[2],
+                "acc_d3": acc_full[3], "acc_d4": acc_full[4],
+                "final_loss": last_loss
+            })
+
+            print(f"[{regime}] L2={L2:>3} rep={rep} | "
+                  f"d1={acc_full[1]:.1f} d2={acc_full[2]:.1f} "
+                  f"d3={acc_full[3]:.1f} d4={acc_full[4]:.1f}  loss={last_loss:.4f}")
 
     return pd.DataFrame.from_records(records)
 
-def log_uniform(low, high, size=None):
-    """Sample log-uniformly between low and high."""
-    return np.exp(np.random.uniform(np.log(low), np.log(high), size))
 
 # ------------------ run on your graph ------------------
 if __name__ == "__main__":
     import os
-
-    # fresh random seed each run, shared across B vs I
     base_seed = int.from_bytes(os.urandom(8), "little") % (2**31 - 1)
     print(f"[Run] base_seed = {base_seed}")
     set_seed(base_seed)
 
-    Gedges = np.array([
-        [0,1,0,0,0,0,0,0,0,0,0,0],
-        [1,0,1,1,0,0,0,0,0,0,0,0],
-        [0,1,0,1,1,1,0,0,0,0,0,0],
-        [0,1,1,0,0,0,1,1,0,0,0,0],
-        [0,0,1,0,0,0,0,1,0,1,0,0],
-        [0,0,1,0,0,0,0,0,1,1,0,0],
-        [0,0,0,1,0,0,0,0,0,0,0,0],
-        [0,0,0,1,1,0,0,0,0,0,0,0],
-        [0,0,0,0,0,1,0,0,0,1,1,0],
-        [0,0,0,0,1,1,0,0,1,0,1,0],
-        [0,0,0,0,0,0,0,0,1,1,0,1],
-        [0,0,0,0,0,0,0,0,0,0,1,0],
-    ], dtype=np.int32)
+    # Example graph (12 nodes)
+    Gedges =  np.array([[0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], # 0
+                        [1., 0., 0., 1., 1., 0., 0., 0., 0., 0., 0., 0.], # 1
+                        [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0.], # 2
+                        [0., 1., 0., 0., 1., 0., 1., 1., 0., 0., 0., 0.], # 3
+                        [0., 1., 1., 1., 0., 1., 0., 0., 0., 0., 0., 0.], # 4
+                        [0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0.], # 5
+                        [0., 0., 0., 1., 0., 0., 0., 0., 1., 1., 0., 0.], # 6
+                        [0., 0., 0., 1., 0., 1., 0., 0., 0., 1., 0., 0.], # 7
+                        [0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 1., 0.], # 8
+                        [0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 1., 1.], # 9
+                        [0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 1.], # 10
+                        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.]], dtype=np.float32)
 
-    # sweep
-    L2_grid = [6, 36, 108, 216, 324]
+    L2_grid = [6, 36, 108, 216, 324]  # width of E2 (pattern separation capacity)
 
-    # shared hyperparams (keep your current choices)
+    # Minimal hyperparams (paper-inspired) + softmax choice controls
     common = dict(
         n_models=1000,
-        L1=12,
-        n_hidden=8,
-        p_drop=0.0,
-        lr = log_uniform(1e-4, 1e-2),  # learning rate range
-        wd = log_uniform(1e-6, 1e-2),  # weight decay range
-        epochs=1,
-        exposures_per_edge=30,
-        nlists=4,
+        epochs=1,              # adjust as needed
+        lr=np.random.rand(),
+        wd=np.random.rand(),
+        L1=12, E3=12,
+        beam_width=1,              # use the argument you set here
+        require_improve=True,
+        softmax_temperature=10,   # softer choices
+        eval_noise_std=2,
+        sample_softmax=True,       # stochastic decisions
         seed=base_seed,
-        label_smoothing= 0.33
+        drop_out=0.5
     )
 
-    # run both regimes with the same seed
     df_B = run(Gedges, L2_grid, regime="B", **common)
     df_I = run(Gedges, L2_grid, regime="I", **common)
 
-    # combine and tag with seed + hyperparams
     for d in (df_B, df_I):
         d["seed"] = base_seed
-        d["lr"] = common["lr"]
-        d["wd"] = common["wd"]
-        d["label_smoothing"] = common["label_smoothing"]
-
     df_all = pd.concat([df_B, df_I], ignore_index=True)
 
-    # summaries
-    print("\nSummary (both regimes combined):")
+    print("\nSummary (both regimes combined; distance via local search on activations):")
     print(df_all.groupby(["regime","L2"])[["acc_d1","acc_d2","acc_d3","acc_d4","final_loss"]].mean().round(1))
 
     # save ONE file
