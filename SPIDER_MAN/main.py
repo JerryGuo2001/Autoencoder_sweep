@@ -267,26 +267,30 @@ if __name__ == "__main__":
 
     # shared hyperparams (keep your current choices)
     common = dict(
-        n_models=100,
+        n_models=1000,
         L1=12,
         n_hidden=8,
-        p_drop=0.05,
-        lr=3e-4,
-        wd=2e-4,
-        epochs=50,
-        exposures_per_edge=20,
+        p_drop=0.0,
+        lr=np.random.rand(),               # random between 0 and 1
+        wd=np.random.rand(),               # random between 0 and 1
+        epochs=1,
+        exposures_per_edge=30,
         nlists=4,
         seed=base_seed,
-        label_smoothing=1
+        label_smoothing=np.random.rand()   # random between 0 and 1
     )
 
     # run both regimes with the same seed
     df_B = run(Gedges, L2_grid, regime="B", **common)
     df_I = run(Gedges, L2_grid, regime="I", **common)
 
-    # combine and tag with seed
+    # combine and tag with seed + hyperparams
     for d in (df_B, df_I):
         d["seed"] = base_seed
+        d["lr"] = common["lr"]
+        d["wd"] = common["wd"]
+        d["label_smoothing"] = common["label_smoothing"]
+
     df_all = pd.concat([df_B, df_I], ignore_index=True)
 
     # summaries
@@ -295,7 +299,11 @@ if __name__ == "__main__":
 
     # save ONE file
     os.makedirs("output_data", exist_ok=True)
-    out_path = os.path.join("output_data", f"SeqCompare_seed{base_seed}_{partition}_{callback}.csv")
+    out_path = os.path.join(
+        "output_data",
+        f"SeqCompare_seed{base_seed}_{partition}_{callback}.csv"
+    )
     df_all.to_csv(out_path, index=False)
     print(f"\nSaved: {out_path}")
+
 
