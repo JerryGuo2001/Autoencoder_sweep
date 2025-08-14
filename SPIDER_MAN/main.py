@@ -237,6 +237,9 @@ def run(adj, L2_grid, n_models=5, regime="I", seed=123,
 
     return pd.DataFrame.from_records(records)
 
+def log_uniform(low, high, size=None):
+    """Sample log-uniformly between low and high."""
+    return np.exp(np.random.uniform(np.log(low), np.log(high), size))
 
 # ------------------ run on your graph ------------------
 if __name__ == "__main__":
@@ -271,13 +274,13 @@ if __name__ == "__main__":
         L1=12,
         n_hidden=8,
         p_drop=0.0,
-        lr=np.random.rand(),               # random between 0 and 1
-        wd=np.random.rand(),               # random between 0 and 1
+        lr = log_uniform(1e-4, 1e-2),  # learning rate range
+        wd = log_uniform(1e-6, 1e-2),  # weight decay range
         epochs=1,
         exposures_per_edge=30,
         nlists=4,
         seed=base_seed,
-        label_smoothing=np.random.rand()   # random between 0 and 1
+        label_smoothing= 0.33
     )
 
     # run both regimes with the same seed
