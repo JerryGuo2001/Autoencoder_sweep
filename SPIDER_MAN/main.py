@@ -1,3 +1,4 @@
+from __future__ import annotations
 # AE-style feedforward network trained only from direct pairings
 # Objective: next-item prediction via softmax CE; no path-length supervision
 import os, hashlib
@@ -15,7 +16,7 @@ import pandas as pd
 import torch, torch.nn as nn, torch.nn.functional as F
 import networkx as nx
 from scipy.spatial.distance import cdist
-from __future__ import annotations
+
 
 
 partition = int(sys.argv[1])
