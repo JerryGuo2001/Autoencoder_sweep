@@ -399,7 +399,7 @@ if __name__ == "__main__":
 
     # Minimal hyperparams (paper-inspired) + gentle stochastic distance judgment
     common = dict(
-        n_models=10,
+        n_models=1000,
         epochs=1,
         lr=log_uniform(1e-4, 1e-2),
         wd=log_uniform(1e-6, 1e-2),
