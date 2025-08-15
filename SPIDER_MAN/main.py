@@ -369,7 +369,7 @@ if __name__ == "__main__":
                         [0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.]], dtype=np.float32)
     
     # L2 width grid (pattern separation capacity in the first expansion)
-    L2_grid = [6, 12, 18, 24]
+    L2_grid = [6, 12, 18, 24, 36, 40]
 
     common = dict(
         n_models=10, epochs=5, lr=0.388731, wd=0.138503,
