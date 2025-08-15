@@ -367,12 +367,12 @@ if __name__ == "__main__":
                         [0.,0.,0.,0.,0.,0.,1.,1.,0.,0.,1.,1.],
                         [0.,0.,0.,0.,0.,0.,0.,0.,1.,1.,0.,1.],
                         [0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.]], dtype=np.float32)
-
+    
     # L2 width grid (pattern separation capacity in the first expansion)
-    L2_grid = [6,12, 24, 36]
+    L2_grid = [6, 12, 18, 24]
 
     common = dict(
-        n_models=100, epochs=5, lr=0.388731, wd=0.138503,
+        n_models=10, epochs=5, lr=0.388731, wd=0.138503,
         seed=base_seed, drop_out=0.1,
         # evaluator (identical for B & I)
         beam_width=1, eps=0.15, max_steps=3, softmax_temperature=2.0, sample_softmax=True,
