@@ -29,7 +29,6 @@ import json
 partition = int(sys.argv[1])
 callback= int(sys.argv[2])
 
-# ------------------ utils ------------------
 def set_seed(s=123):
     random.seed(s); np.random.seed(s); torch.manual_seed(s)
     try: torch.cuda.manual_seed_all(s)
@@ -351,7 +350,7 @@ def run_uniform_eval(adj, L2_grid, n_models=5, regime="I", seed=123, epochs=1, l
 
 # ------------------ run on your graph (final df + prints) ------------------
 if __name__ == "__main__":
-    import os, json, hashlib
+    import os
     base_seed = int.from_bytes(os.urandom(8), "little") % (2**31 - 1)
     set_seed(base_seed)
 
@@ -370,25 +369,17 @@ if __name__ == "__main__":
                         [0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.]], dtype=np.float32)
 
     # L2 width grid (pattern separation capacity in the first expansion)
-    L2_grid = [6, 36, 108, 216, 328]
-
-    # --- randomize lr and wd once per run (reasonable distributions) ---
-    _rng = np.random.default_rng(base_seed ^ 0xC0FFEE)
-    # lr ~ log-uniform in [1e-4, 0.5]
-    lr = float(10 ** _rng.uniform(-4, np.log10(0.5)))
-    # wd ~ Beta(2,8) scaled to [0, 0.5] (small values more likely)
-    wd = float(_rng.beta(2, 8) * 0.5)
-    print(f"Using random hyperparams this run: lr={lr:.6f}, wd={wd:.6f}")
+    L2_grid = [6,12, 24, 36]
 
     common = dict(
-        n_models=1000, epochs=5, lr=lr, wd=wd,           # <— randomized here
+        n_models=100, epochs=5, lr=0.388731, wd=0.138503,
         seed=base_seed, drop_out=0.3,
         # evaluator (identical for B & I)
         beam_width=1, eps=0.15, max_steps=3, softmax_temperature=2.0, sample_softmax=True,
         # uniform difficulty:
         eval_noise_std=0.0, edge_dropout_p=0.0,
         # bottleneck width
-        bottleneck_dim=3
+        bottleneck_dim=10
     )
 
     df_B = run_uniform_eval(Gedges, L2_grid, regime="B", **common)
@@ -398,10 +389,6 @@ if __name__ == "__main__":
         d["seed"] = base_seed
     df = pd.concat([df_B, df_I], ignore_index=True)
 
-    # also store lr/wd columns in the CSV (constant across rows for this run)
-    df["lr"] = lr
-    df["wd"] = wd
-
     # save ONE file
     os.makedirs("output_data", exist_ok=True)
     out_path = os.path.join(
@@ -410,43 +397,3 @@ if __name__ == "__main__":
     )
     df.to_csv(out_path, index=False)
     print(f"\nSaved: {out_path}")
-
-    # save hyperparameters / metadata as JSON next to the CSV
-    meta = {
-        "seed": int(base_seed),
-        "partition": int(partition),
-        "callback": int(callback),
-        "graph": {
-            "num_nodes": int(Gedges.shape[0]),
-            "num_edges": int(Gedges.sum() // 2)
-        },
-        "L2_grid": list(map(int, L2_grid)),
-        "training": {
-            "n_models": int(common["n_models"]),
-            "epochs": int(common["epochs"]),
-            "lr": float(lr),
-            "wd": float(wd),
-            "drop_out": float(common["drop_out"]),
-            "bottleneck_dim": int(common["bottleneck_dim"]),
-        },
-        "evaluator": {
-            "beam_width": int(common["beam_width"]),
-            "eps": float(common["eps"]),
-            "max_steps": int(common["max_steps"]),
-            "softmax_temperature": float(common["softmax_temperature"]),
-            "sample_softmax": bool(common["sample_softmax"]),
-            "eval_noise_std": float(common["eval_noise_std"]),
-            "edge_dropout_p": float(common["edge_dropout_p"])
-        }
-    }
-    try:
-        with open(__file__, "rb") as f:
-            meta["code_sha256"] = hashlib.sha256(f.read()).hexdigest()
-    except Exception:
-        meta["code_sha256"] = None
-
-    meta_path = out_path.replace(".csv", ".meta.json")
-    with open(meta_path, "w") as f:
-        json.dump(meta, f, indent=2, sort_keys=True)
-    print(f"Saved hyperparameters/meta: {meta_path}")
-
