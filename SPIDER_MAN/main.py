@@ -369,7 +369,7 @@ if __name__ == "__main__":
                         [0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,1.,0.]], dtype=np.float32)
     
     # L2 width grid (pattern separation capacity in the first expansion)
-    L2_grid = [6, 12, 18, 24, 36, 40]
+    L2_grid = [6, 12, 18, 24, 36]
 
     common = dict(
         n_models=100, epochs=5, lr=0.388731, wd=0.138503,
@@ -377,7 +377,7 @@ if __name__ == "__main__":
         # evaluator (identical for B & I)
         beam_width=1, eps=0.15, max_steps=3, softmax_temperature=2.0, sample_softmax=True,
         # uniform difficulty:
-        eval_noise_std=0.0, edge_dropout_p=0.0,
+        eval_noise_std=0.0, edge_dropout_p=0.1,
         # bottleneck width
         bottleneck_dim=12
     )
