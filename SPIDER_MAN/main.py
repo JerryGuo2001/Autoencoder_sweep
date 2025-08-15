@@ -372,14 +372,14 @@ if __name__ == "__main__":
     L2_grid = [6,12, 24, 36]
 
     common = dict(
-        n_models=100, epochs=5, lr=0.388731, wd=0.138503,
-        seed=base_seed, drop_out=0.3,
+        n_models=10, epochs=5, lr=0.388731, wd=0.138503,
+        seed=base_seed, drop_out=0.5,
         # evaluator (identical for B & I)
         beam_width=1, eps=0.15, max_steps=3, softmax_temperature=2.0, sample_softmax=True,
         # uniform difficulty:
         eval_noise_std=0.0, edge_dropout_p=0.0,
         # bottleneck width
-        bottleneck_dim=10
+        bottleneck_dim=12
     )
 
     df_B = run_uniform_eval(Gedges, L2_grid, regime="B", **common)
