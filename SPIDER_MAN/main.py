@@ -373,7 +373,7 @@ if __name__ == "__main__":
 
     common = dict(
         n_models=100, epochs=5, lr=0.388731, wd=0.138503,
-        seed=base_seed, drop_out=0.5,
+        seed=base_seed, drop_out=0.1,
         # evaluator (identical for B & I)
         beam_width=1, eps=0.15, max_steps=3, softmax_temperature=2.0, sample_softmax=True,
         # uniform difficulty:
@@ -381,7 +381,7 @@ if __name__ == "__main__":
         # bottleneck width
         bottleneck_dim=12
     )
-
+    
     df_B = run_uniform_eval(Gedges, L2_grid, regime="B", **common)
     df_I = run_uniform_eval(Gedges, L2_grid, regime="I", **common)
 
