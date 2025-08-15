@@ -372,8 +372,8 @@ if __name__ == "__main__":
     L2_grid = [6, 12, 18, 24, 36]
 
     common = dict(
-        n_models=100, epochs=5, lr=0.388731, wd=0.138503,
-        seed=base_seed, drop_out=0.1,
+        n_models=10, epochs=5, lr=0.388731, wd=0.138503,
+        seed=base_seed, drop_out=0.0,
         # evaluator (identical for B & I)
         beam_width=1, eps=0.15, max_steps=3, softmax_temperature=2.0, sample_softmax=True,
         # uniform difficulty:
